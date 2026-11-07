@@ -85,6 +85,7 @@
 .dd-page th:first-child,.dd-page td:first-child { padding-left:0; }
 .dd-page th:last-child,.dd-page td:last-child { padding-right:0; }
 .dd-session-table { min-width:690px; table-layout:fixed; }
+.dd-session-table td.dd-empty { display:table-cell; height:200px; text-align:center; }
 .dd-session-table th:nth-child(1) { width:36%; }
 .dd-session-table th:nth-child(2) { width:15%; }
 .dd-session-table th:nth-child(3) { width:13%; }

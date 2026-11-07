@@ -61,10 +61,10 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
   const [listHeight, setListHeight] = useState<number>()
   const [scrollTarget, setScrollTarget] = useState<{ id?: string } | null>(null)
   const table = useRef<HTMLElement | null>(null), list = useRef<HTMLDivElement | null>(null)
-  const resetList = () => { setPage(0); setExpanded(null); setListHeight(undefined) }
+  const resetList = () => { setPage(0); setExpanded(null) }
   const selectProject = (id: string) => { setProject(id); resetList() }
   const actualDays = snapshot?.days ?? 7
-  useEffect(() => { setPage(0); setExpanded(null); setListHeight(undefined) }, [actualDays, archived])
+  useLayoutEffect(() => { setPage(0); setExpanded(null) }, [actualDays, archived])
   const data = useMemo(() => {
     const hourOf = calendar(snapshot?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
     const rows = (snapshot?.rows ?? []).filter(row => {
@@ -99,8 +99,15 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     return Array.from({ length: actualDays }, (_, i) => new Date(Date.parse(`${snapshot.fromDate}T12:00:00Z`) + i * 86400000).toISOString().slice(0, 10))
   }, [snapshot?.today, snapshot?.fromDate, actualDays])
   const input = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
-  const selectSession = (id: string) => { setStatus('all'); setSearch(''); setExpanded(id); setListHeight(undefined); const index = data.scoped.slice().sort((a, b) => priority(a) - priority(b) || b.updatedAt - a.updatedAt).findIndex(r => r.id === id); setPage(Math.max(0, Math.floor(index / PAGE_SIZE))); setScrollTarget({ id }) }
-  const selectStatus = (value: string) => { setStatus(value); resetList(); setScrollTarget({}) }
+  const selectSession = (id: string) => { setStatus('all'); setSearch(''); setExpanded(id); const index = data.scoped.slice().sort((a, b) => priority(a) - priority(b) || b.updatedAt - a.updatedAt).findIndex(r => r.id === id); setPage(Math.max(0, Math.floor(index / PAGE_SIZE))); setScrollTarget({ id }) }
+  const selectStatus = (value: string, reveal = true) => { setStatus(value); resetList(); if (reveal) setScrollTarget({}) }
+  const pageCount = Math.max(1, Math.ceil(data.filtered.length / PAGE_SIZE)), currentPage = Math.min(page, pageCount - 1)
+  useLayoutEffect(() => {
+    if (expanded) return
+    // Reserve the collapsed table's height across filtering and paging, never a detail row's height.
+    const height = list.current?.querySelector('table')?.getBoundingClientRect().height
+    if (height) setListHeight(previous => Math.max(previous ?? 0, height))
+  }, [data.filtered, currentPage, expanded])
   useLayoutEffect(() => {
     if (!scrollTarget) return
     const target = scrollTarget.id ? document.getElementById(`dd-detail-${scrollTarget.id}`) ?? table.current : table.current
@@ -110,8 +117,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     const top = page.scrollTop + target.getBoundingClientRect().top - page.getBoundingClientRect().top - page.clientTop - 16
     page.scrollTo({ top: Math.max(0, Math.min(top, page.scrollHeight - page.clientHeight)), behavior: 'instant' })
   }, [scrollTarget])
-  const pageCount = Math.max(1, Math.ceil(data.filtered.length / PAGE_SIZE)), currentPage = Math.min(page, pageCount - 1)
-  const changePage = (value: number) => { setListHeight(list.current?.getBoundingClientRect().height); setPage(value); setExpanded(null) }
+  const changePage = (value: number) => { setPage(value); setExpanded(null) }
   const go = async (id: string) => { try { await openSession(id) } catch { setError('openError') } }
   const rangeLabel = t(actualDays === 1 ? 'today' : actualDays === 7 ? 'week' : 'month')
   const title = t('regularSessions'), superagent = data.superagent
@@ -146,7 +152,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
       <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartProgress')}</h3></div><p className="dd-caption">{t('chartProgressHint')}</p><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></section>
       <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></section>
     </div>
-    <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></div></div>
+    <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></div></div>
       <div ref={list} className="dd-table-scroll dd-session-list" style={{ minHeight: listHeight }}><table className="dd-session-table"><thead><tr><th>{t('session')}</th><th>{t('status')}</th><th>{t('progress')}</th><th>{t('tokens')}</th><th>{t('toolCalls')}</th><th>{t('updated')}</th></tr></thead><tbody>
         {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={exact(tokenTotal(row.usage.tokens))}>{row.unavailable ? '—' : compact(tokenTotal(row.usage.tokens))}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
           {expanded === row.id && <tr id={`dd-detail-${row.id}`}><td colSpan={6}><div className="dd-detail">
@@ -163,7 +169,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
         </Fragment>)}
         {!data.filtered.length && <tr><td colSpan={6} className="dd-empty">{snapshot?.scanning ? t('loading') : t('noData')}</td></tr>}
       </tbody></table></div>
-      {data.filtered.length > PAGE_SIZE && <nav className="dd-pagination" aria-label={`${title} · ${t('pagination')}`}><span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, data.filtered.length)} / {data.filtered.length}</span><button className="dd-button" disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>{t('previousPage')}</button><span aria-live="polite">{currentPage + 1} / {pageCount}</span><button className="dd-button" disabled={currentPage + 1 === pageCount} onClick={() => changePage(currentPage + 1)}>{t('nextPage')}</button></nav>}
+      <nav className="dd-pagination" style={{ visibility: pageCount > 1 ? 'visible' : 'hidden' }} aria-label={`${title} · ${t('pagination')}`}><span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, data.filtered.length)} / {data.filtered.length}</span><button className="dd-button" disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>{t('previousPage')}</button><span aria-live="polite">{currentPage + 1} / {pageCount}</span><button className="dd-button" disabled={currentPage + 1 === pageCount} onClick={() => changePage(currentPage + 1)}>{t('nextPage')}</button></nav>
     </section>
   </div>
 }
