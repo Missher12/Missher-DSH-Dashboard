@@ -1,0 +1,39 @@
+{
+  "name": "@missher/dsh-dashboard",
+  "version": "0.2.4",
+  "description": "原生 DSH 工作仪表盘：会话状态、Token 图表、目标与清单进度",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./lib/index.js",
+  "exports": { ".": "./lib/index.js", "./client": "./lib/client.js" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-api-session-controller"] }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-workspace": "0.2.1-rc.4",
+    "@types/node": "24.10.1",
+    "@types/react": "18.3.28",
+    "esbuild": "0.28.1",
+    "react": "18.3.1",
+    "typescript": "6.0.3"
+  }
+}
