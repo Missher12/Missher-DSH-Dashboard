@@ -129,7 +129,7 @@ class DashboardReader {
       return { ...facts, cwd, title: ticket?.title || row.title, updatedAt: Math.max(row.updatedAt, ticket?.updatedAt ?? 0),
         ...projectOf(row.id, cwd), kind: ticket || ['dsh-superagent-worker', 'dsh-superagent-router'].includes(row.agentPreset ?? '') ? 'superagent' : row.origin === 'subagent' ? 'subagent' : 'session',
         status: this.failed.has(row.id) && !agent ? 'unknown' : statusOf(row, running, ticket), running, live: !!agent, archived: archived.has(row.id), ticket,
-        lifetimeTokens: lifetime.missing && !lifetime.reported ? null : tokenTotal(lifetime.tokens), usage, series,
+        lifetimeTokens: tokenTotal(lifetime.tokens), usage, series,
         ...(this.failed.has(row.id) ? { unavailable: true } : {}) }
     }
     for (const { row } of this.cache.values()) rows.push(makeRow(row, tickets.get(row.id)))

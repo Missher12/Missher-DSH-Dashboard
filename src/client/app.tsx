@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { addUsage, calendar, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from '../fold.ts'
 import type { DashboardRow, Snapshot, Status, Tokens } from '../types.ts'
 import { compact, exact, ProgressChart, RankingChart, StateChart, statusOrder, TokenChart } from './charts.tsx'
@@ -59,6 +59,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
   const [project, setProject] = useState(''), [status, setStatus] = useState<string>('all'), [search, setSearch] = useState(''), [rank, setRank] = useState<'session' | 'project'>('session')
   const [expanded, setExpanded] = useState<string | null>(null), [page, setPage] = useState(0), [error, setError] = useState('')
   const [listHeight, setListHeight] = useState<number>()
+  const [scrollTarget, setScrollTarget] = useState<{ id?: string } | null>(null)
   const table = useRef<HTMLElement | null>(null), list = useRef<HTMLDivElement | null>(null)
   const resetList = () => { setPage(0); setExpanded(null); setListHeight(undefined) }
   const selectProject = (id: string) => { setProject(id); resetList() }
@@ -98,8 +99,17 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     return Array.from({ length: actualDays }, (_, i) => new Date(Date.parse(`${snapshot.fromDate}T12:00:00Z`) + i * 86400000).toISOString().slice(0, 10))
   }, [snapshot?.today, snapshot?.fromDate, actualDays])
   const input = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
-  const selectSession = (id: string) => { setStatus('all'); setSearch(''); setExpanded(id); const index = data.scoped.slice().sort((a, b) => priority(a) - priority(b) || b.updatedAt - a.updatedAt).findIndex(r => r.id === id); setPage(Math.max(0, Math.floor(index / PAGE_SIZE))); requestAnimationFrame(() => (document.getElementById(`dd-detail-${id}`) ?? table.current)?.scrollIntoView({ block: 'start', behavior: 'instant' })) }
-  const selectStatus = (value: string) => { setStatus(value); resetList(); table.current?.scrollIntoView({ block: 'start', behavior: 'instant' }) }
+  const selectSession = (id: string) => { setStatus('all'); setSearch(''); setExpanded(id); setListHeight(undefined); const index = data.scoped.slice().sort((a, b) => priority(a) - priority(b) || b.updatedAt - a.updatedAt).findIndex(r => r.id === id); setPage(Math.max(0, Math.floor(index / PAGE_SIZE))); setScrollTarget({ id }) }
+  const selectStatus = (value: string) => { setStatus(value); resetList(); setScrollTarget({}) }
+  useLayoutEffect(() => {
+    if (!scrollTarget) return
+    const target = scrollTarget.id ? document.getElementById(`dd-detail-${scrollTarget.id}`) ?? table.current : table.current
+    const page = target?.closest<HTMLElement>('.dd-page')
+    if (!target || !page) return
+    // scrollIntoView also scrolls the host's clipped ancestors, including its native webview.
+    const top = page.scrollTop + target.getBoundingClientRect().top - page.getBoundingClientRect().top - page.clientTop - 16
+    page.scrollTo({ top: Math.max(0, Math.min(top, page.scrollHeight - page.clientHeight)), behavior: 'instant' })
+  }, [scrollTarget])
   const pageCount = Math.max(1, Math.ceil(data.filtered.length / PAGE_SIZE)), currentPage = Math.min(page, pageCount - 1)
   const changePage = (value: number) => { setListHeight(list.current?.getBoundingClientRect().height); setPage(value); setExpanded(null) }
   const go = async (id: string) => { try { await openSession(id) } catch { setError('openError') } }
@@ -115,22 +125,20 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
       <Summary label={t('running')} value={String(data.scoped.filter(r => r.running).length)} hint={t('liveNow')} onClick={() => selectStatus('running')} />
       <Summary label={t('needAttention')} value={String(data.scoped.filter(r => attentionStates.has(r.status)).length)} hint={t('liveNow')} onClick={() => selectStatus('attention')} />
       <Summary label={t('completed')} value={data.goals.length ? `${data.complete} / ${data.goals.length}` : '—'} hint={t('goalsCount')} />
-      <Summary label={t('tokens')} value={data.usage.missing && !data.usage.reported ? '—' : compact(tokenTotal(data.usage.tokens))} hint={`${rangeLabel} · ${t('reportedOnly')}`} />
+      <Summary label={t('tokens')} value={compact(tokenTotal(data.usage.tokens))} hint={`${rangeLabel} · ${t('reportedOnly')}`} />
       <Summary label={t('checklist')} value={data.todos.length ? `${data.done} / ${data.todos.length}` : '—'} hint={t('items')} />
       <Summary label={t('cache')} value={input ? `${(data.usage.tokens.cacheRead / input * 100).toFixed(1)}%` : '—'} hint={rangeLabel} />
     </section>
-    {!!data.usage.missing && <p className="dd-notice">{t('missingUsage')} · {data.usage.missing}</p>}
     <section className="dd-superagent" aria-labelledby="dd-superagent-title">
       <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{t('allProjects')} · {rangeLabel}</span></div>
       <div className="dd-superagent-cards">
         <Summary label={t('running')} value={superagentReady ? String(superagent.rows.filter(row => row.running).length) : '—'} hint={t('liveNow')} />
         <Summary label={t('needAttention')} value={superagentReady ? String(superagent.rows.filter(row => attentionStates.has(row.status)).length) : '—'} hint={t('liveNow')} />
         <Summary label={t('taskCompleted')} value={superagentReady && superagent.goals.length ? `${superagent.complete} / ${superagent.goals.length}` : '—'} hint={t('goalsCount')} />
-        <Summary label={t('tokens')} value={!superagentReady || (superagent.usage.missing && !superagent.usage.reported) ? '—' : compact(tokenTotal(superagent.usage.tokens))} hint={t('reportedOnly')} />
+        <Summary label={t('tokens')} value={superagentReady ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')} />
       </div>
       {snapshot?.superagent === 'partial' && <p className="dd-notice">{t('sourcePartial')}</p>}
       {snapshot?.superagent === 'unavailable' && !snapshot.scanning && <p className="dd-notice">{t('sourceUnavailable')}</p>}
-      {!!superagent.usage.missing && <p className="dd-notice">{t('missingUsage')} · {superagent.usage.missing}</p>}
     </section>
     <div className="dd-chart-grid">
       <section className="dd-chart dd-trend"><div className="dd-section-head"><h3>{t('chartTokens')}</h3><span>{rangeLabel}</span></div><TokenChart key={actualDays} series={data.series} keys={keys} t={t} /></section>
@@ -140,7 +148,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     </div>
     <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></div></div>
       <div ref={list} className="dd-table-scroll dd-session-list" style={{ minHeight: listHeight }}><table className="dd-session-table"><thead><tr><th>{t('session')}</th><th>{t('status')}</th><th>{t('progress')}</th><th>{t('tokens')}</th><th>{t('toolCalls')}</th><th>{t('updated')}</th></tr></thead><tbody>
-        {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={exact(tokenTotal(row.usage.tokens))}>{row.unavailable || (!row.usage.reported && row.usage.missing) ? '—' : compact(tokenTotal(row.usage.tokens))}{row.usage.missing ? ' *' : ''}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
+        {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={exact(tokenTotal(row.usage.tokens))}>{row.unavailable ? '—' : compact(tokenTotal(row.usage.tokens))}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
           {expanded === row.id && <tr id={`dd-detail-${row.id}`}><td colSpan={6}><div className="dd-detail">
             <div className="dd-detail-head"><code>{row.id}</code>{row.id.startsWith('ticket:') ? <span>{t('noSession')}</span> : <button className="dd-button" onClick={() => void go(row.id)}>{t('openSession')}</button>}</div>
             {row.unavailable && <p className="dd-error">{t('partial')}</p>}

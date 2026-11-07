@@ -25,13 +25,16 @@ test('fork usage and inherited goals/checklists are not counted again', () => {
   assert.equal(row.goal, undefined)
   assert.equal(row.todos, null)
 })
-test('absent, negative, unsafe and overflowing usage remain visibly incomplete', () => {
+test('missing and invalid usage are skipped while valid usage is counted', () => {
   const row = foldSession(header, [message(0, undefined), message(1, { inputTokens: -1, outputTokens: 2 }, 1), message(2, { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 1 }, 2)], 'Asia/Shanghai')
   // Explicitly absent usage is a separate request; no made-up zero-cost sample.
   const absent = foldSession(header, [event(0, 'assistant/message', { turn: 0, step: 0, stream: [] })], 'Asia/Shanghai')
   assert.equal(absent.lifetime.missing, 1)
   assert.equal(absent.lifetime.reported, 0)
+  assert.equal(tokenTotal(absent.lifetime.tokens), 0)
   assert.equal(row.lifetime.missing, 2)
+  assert.equal(row.lifetime.reported, 1)
+  assert.equal(tokenTotal(row.lifetime.tokens), 100)
 })
 test('local calendar midnight uses the configured time zone', () => {
   const row = foldSession(header, [
