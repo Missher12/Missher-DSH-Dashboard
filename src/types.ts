@@ -48,10 +48,13 @@ export interface DashboardRow extends Omit<FoldedSession, 'hours' | 'lifetime'> 
   lifetimeTokens: number | null
   usage: Usage
   series: Record<string, Tokens>
+  toolsSeries: Record<string, number>
   unavailable?: boolean
 }
 export interface Snapshot {
   generatedAt: number
+  cachedAt?: number
+  cacheError?: boolean
   timeZone: string
   today: string
   fromDate: string

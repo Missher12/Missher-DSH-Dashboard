@@ -5,8 +5,9 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { IncomingMessage } from 'node:http'
-import { basename, sep } from 'node:path'
+import { basename, isAbsolute, join, sep } from 'node:path'
 import { addUsage, calendar, foldSession, readTicket, statusOf, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from './fold.ts'
+import { loadCache, saveCache } from './cache.ts'
 import type { DashboardRow, FoldedSession, Snapshot, Ticket, Tokens } from './types.ts'
 
 export const name = 'missher-dashboard'
@@ -18,7 +19,7 @@ export function allowedRequest(req: Pick<IncomingMessage, 'headers'>, port: numb
     && (req.headers.origin === undefined || req.headers.origin === `http://${host}`)
 }
 
-class DashboardReader {
+export class DashboardReader {
   private cache = new Map<string, { revision: string; row: FoldedSession }>()
   private failed = new Set<string>()
   private tickets: Ticket[] = []
@@ -28,11 +29,34 @@ class DashboardReader {
   private totalSessions = 0
   private scanned = 0
   private readError = false
+  private cacheError = false
+  private cacheFile?: string
+  private ready: Promise<void>
+  private updatedAt = 0
+  private cachedAt?: number
+  private needsSave = true
   private lifetime = new AbortController()
   private timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   private ctx: Context
-  constructor(ctx: Context) { this.ctx = ctx }
-  dispose() { this.lifetime.abort(); this.cache.clear() }
+  constructor(ctx: Context) {
+    this.ctx = ctx
+    const profile = ctx.get('profileContext') as { dir?: string } | undefined
+    if (typeof profile?.dir === 'string' && isAbsolute(profile.dir)) this.cacheFile = join(profile.dir, '.dsh-dashboard', 'cache-v1.json')
+    else this.cacheError = true
+    this.ready = this.restore()
+  }
+  async dispose() { this.lifetime.abort(); await this.ready; await this.scan; this.cache.clear() }
+
+  private async restore(): Promise<void> {
+    if (!this.cacheFile) return
+    const saved = await loadCache(this.cacheFile, this.timeZone)
+    if (!saved || this.lifetime.signal.aborted) return
+    // Persistence revisions only compare within one host service instance.
+    // Restored statistics can paint immediately, but every log is revalidated.
+    for (const row of saved.rows) this.cache.set(row.id, { revision: '', row })
+    this.tickets = saved.tickets; this.superagent = saved.superagent
+    this.totalSessions = saved.rows.length; this.updatedAt = this.cachedAt = saved.updatedAt
+  }
 
   private async readTickets(): Promise<void> {
     const tickets = new Map<string, Ticket>()
@@ -51,7 +75,9 @@ class DashboardReader {
           offset = next
         }
       }
-      this.tickets = [...tickets.values()]; this.superagent = 'available'
+      const next = [...tickets.values()]
+      if (JSON.stringify(next) !== JSON.stringify(this.tickets) || this.superagent !== 'available') this.needsSave = true
+      this.tickets = next; this.superagent = 'available'
     } catch { this.superagent = this.tickets.length ? 'partial' : 'unavailable' }
   }
 
@@ -79,7 +105,7 @@ class DashboardReader {
                 try { row = foldSession(handle.header, (await handle.read(0, undefined, { signal })).events, this.timeZone, handle.inheritedEventCount) }
                 finally { await handle.close() }
               }
-              if (!signal.aborted) this.cache.set(id, { revision, row })
+              if (!signal.aborted) { this.cache.set(id, { revision, row }); this.needsSave = true }
             }
             this.failed.delete(id)
           } catch {
@@ -93,13 +119,24 @@ class DashboardReader {
         }
       }
       await Promise.all([worker(), worker()])
-      for (const id of this.cache.keys()) if (!entries.has(id)) { this.cache.delete(id); this.failed.delete(id) }
+      for (const id of this.cache.keys()) if (!entries.has(id)) { this.cache.delete(id); this.failed.delete(id); this.needsSave = true }
       this.readError = false
     } catch { if (!signal.aborted) this.readError = true }
     await ticketRead
+    if (!signal.aborted && !this.readError && !this.failed.size) {
+      this.updatedAt = Date.now(); this.cachedAt = undefined
+      if (this.needsSave && this.cacheFile) {
+        try {
+          await saveCache(this.cacheFile, { version: 1, timeZone: this.timeZone, updatedAt: this.updatedAt,
+            rows: [...this.cache.values()].map(value => value.row), tickets: this.tickets, superagent: this.superagent })
+          this.needsSave = false; this.cacheError = false
+        } catch { this.cacheError = true }
+      }
+    }
   }
 
-  snapshot(days: number): Snapshot & { readError: boolean } {
+  async snapshot(days: number): Promise<Snapshot & { readError: boolean }> {
+    await this.ready
     if (!this.scan && Date.now() - this.lastScan >= 4000 && !this.lifetime.signal.aborted) {
       this.lastScan = Date.now()
       this.scan = this.refresh().finally(() => { this.scan = undefined })
@@ -115,13 +152,14 @@ class DashboardReader {
       return ws ? { projectId: String(ws.id), project: ws.title || basename(ws.path) } : { projectId: cwd || '__none', project: cwd ? basename(cwd) || cwd : '' }
     }
     const makeRow = (row: FoldedSession, ticket?: Ticket): DashboardRow => {
-      const usage = zeroUsage(), series: Record<string, Tokens> = {}
+      const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
       for (const [hour, value] of Object.entries(row.hours)) {
         const date = hour.slice(0, 10)
         if (date < fromDate || date > today) continue
         addUsage(usage, value)
         const key = days === 1 ? hour : date, bucket = series[key] ??= zeroTokens()
         for (const k of tokenKeys) bucket[k] += value.tokens[k]
+        toolsSeries[key] = (toolsSeries[key] ?? 0) + value.toolCalls
       }
       const agent = this.ctx.agents.get(row.id as SessionId), running = agent?.status === 'running'
       const { hours, lifetime, ...facts } = row
@@ -129,7 +167,7 @@ class DashboardReader {
       return { ...facts, cwd, title: ticket?.title || row.title, updatedAt: Math.max(row.updatedAt, ticket?.updatedAt ?? 0),
         ...projectOf(row.id, cwd), kind: ticket || ['dsh-superagent-worker', 'dsh-superagent-router'].includes(row.agentPreset ?? '') ? 'superagent' : row.origin === 'subagent' ? 'subagent' : 'session',
         status: this.failed.has(row.id) && !agent ? 'unknown' : statusOf(row, running, ticket), running, live: !!agent, archived: archived.has(row.id), ticket,
-        lifetimeTokens: tokenTotal(lifetime.tokens), usage, series,
+        lifetimeTokens: tokenTotal(lifetime.tokens), usage, series, toolsSeries,
         ...(this.failed.has(row.id) ? { unavailable: true } : {}) }
     }
     for (const { row } of this.cache.values()) rows.push(makeRow(row, tickets.get(row.id)))
@@ -141,22 +179,23 @@ class DashboardReader {
       if (ticket.sessionId) row.unavailable = true
       rows.push(row)
     }
-    return { generatedAt: now, timeZone: this.timeZone, today, fromDate, days, scanned: this.scanned, totalSessions: this.totalSessions,
-      failedSessions: this.failed.size, scanning: !!this.scan && (this.totalSessions === 0 || this.scanned < this.totalSessions), superagent: this.superagent, rows, readError: this.readError }
+    return { generatedAt: this.updatedAt || now, cachedAt: this.cachedAt, cacheError: this.cacheError,
+      timeZone: this.timeZone, today, fromDate, days, scanned: this.scanned, totalSessions: this.totalSessions,
+      failedSessions: this.failed.size, scanning: !!this.scan, superagent: this.superagent, rows, readError: this.readError }
   }
 }
 
 export function apply(ctx: Context): void {
   const reader = new DashboardReader(ctx)
   ctx.effect(() => () => reader.dispose())
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/dsh-dashboard/api/snapshot', handler: (req, res) => {
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/dsh-dashboard/api/snapshot', handler: async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     if (!allowedRequest(req, ctx.webServer.port ?? -1)) { res.writeHead(403); res.end('{"error":"Forbidden"}'); return }
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); res.writeHead(405); res.end('{"error":"Read only"}'); return }
     const days = Number(new URL(req.url!, 'http://localhost').searchParams.get('days') ?? 1)
     if (![1, 7, 30].includes(days)) { res.writeHead(400); res.end('{"error":"Invalid range"}'); return }
-    try { const payload = JSON.stringify(reader.snapshot(days)); res.writeHead(200); res.end(payload) }
+    try { const payload = JSON.stringify(await reader.snapshot(days)); res.writeHead(200); res.end(payload) }
     catch { if (!res.headersSent) res.writeHead(500); res.end('{"error":"Snapshot unavailable"}') }
   } }))
 }

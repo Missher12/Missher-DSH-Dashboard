@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { addUsage, calendar, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from '../fold.ts'
+import type { ReactNode } from 'react'
 import type { DashboardRow, Snapshot, Status, Tokens } from '../types.ts'
-import { compact, exact, ProgressChart, RankingChart, StateChart, statusOrder, TokenChart } from './charts.tsx'
+import { compact, exact, ProgressChart, RankingChart, StateChart, statusOrder, TokenChart, TokenMixChart, ToolChart, Sparkline, MiniProgress } from './charts.tsx'
 import type { T, zh } from './locales.ts'
 
 const attentionStates = new Set<Status>(['approval', 'attention', 'blocked', 'error', 'unknown'])
@@ -9,50 +10,64 @@ const priority = (row: DashboardRow) => row.running ? 0 : attentionStates.has(ro
 const rowTitle = (row: DashboardRow) => row.title || row.id
 const completedGoal = (row: DashboardRow) => row.ticket ? row.ticket.stage === 'ended' && ['completed', 'merged'].includes(row.ticket.outcome ?? '') : row.goal?.phase === 'complete'
 const PAGE_SIZE = 10
+type SnapshotData = Snapshot & { readError?: boolean }
+// Reopening a panel or a visited range can paint immediately while fresh data is fetched.
+const snapshots = new Map<number, SnapshotData>()
 type AppProps = { t: T; openSession: (id: string) => Promise<void> }
 const date = (time: number, timeZone?: string) => new Intl.DateTimeFormat(undefined, { timeZone, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(time)
 function StatusLabel({ row, t }: { row: DashboardRow; t: T }) {
   const label = row.ticket?.action === 'review' ? t('taskReview') : row.ticket?.action === 'answer' ? t('taskAnswer') : row.ticket?.action === 'delivery' ? t('taskDelivery') : t(row.status)
   return <span className={`dd-status dd-status-${row.status}`}><i />{label}</span>
 }
-function Summary({ label, value, hint, onClick }: { label: string; value: string; hint: string; onClick?: () => void }) {
-  return <div className="dd-stat">{onClick ? <button onClick={onClick}><span>{label}</span><strong>{value}</strong></button> : <><span>{label}</span><strong>{value}</strong></>}<small>{hint}</small></div>
+function Summary({ label, value, hint, onClick, children }: { label: string; value: string; hint: string; onClick?: () => void; children?: ReactNode }) {
+  return <div className="dd-stat" title={hint}>{onClick ? <button onClick={onClick}><span>{label}</span><strong>{value}</strong></button> : <><span>{label}</span><strong>{value}</strong></>}{children}</div>
 }
 export function App({ t, openSession }: AppProps) {
-  const [snapshot, setSnapshot] = useState<(Snapshot & { readError?: boolean }) | null>(null)
+  const [snapshot, setSnapshot] = useState<SnapshotData | null>(() => snapshots.get(7) ?? null)
   const [days, setDays] = useState(7), [archived, setArchived] = useState(false)
   const [error, setError] = useState(''), [busy, setBusy] = useState(false)
-  const request = useRef<AbortController | null>(null), generation = useRef(0)
-  const refresh = useCallback(async () => {
+  const request = useRef<AbortController | null>(null), generation = useRef(0), timer = useRef<ReturnType<typeof setTimeout>>()
+  const refresh = useCallback(async function run() {
     if (request.current) return
+    clearTimeout(timer.current)
     const controller = new AbortController(), version = generation.current; request.current = controller; setBusy(true)
+    let delay = 5000
     try {
       const response = await fetch(`/dsh-dashboard/api/snapshot?days=${days}`, { headers: { 'x-dsh-dashboard': '1' }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]) })
       if (!response.ok) throw new Error('Snapshot request failed')
-      const next = await response.json() as Snapshot
+      const next = await response.json() as SnapshotData
       if (!Array.isArray(next.rows)) throw new Error('Invalid snapshot')
-      if (!controller.signal.aborted && version === generation.current) { setSnapshot(next); setError('') }
+      if (!controller.signal.aborted && version === generation.current) {
+        snapshots.set(days, next); setSnapshot(next); setError(''); delay = next.scanning ? 250 : 5000
+      }
     } catch { if (!controller.signal.aborted && version === generation.current) setError('readFailed') }
-    finally { if (request.current === controller) request.current = null; if (version === generation.current) setBusy(false) }
+    finally {
+      if (request.current === controller) request.current = null
+      if (version === generation.current) {
+        setBusy(false)
+        timer.current = setTimeout(() => { if (document.visibilityState === 'visible') void run() }, delay)
+      }
+    }
   }, [days])
   useEffect(() => {
     generation.current++; request.current?.abort(); request.current = null
     void refresh()
-    const interval = setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 5000)
     const visible = () => { if (document.visibilityState === 'visible') void refresh() }
     document.addEventListener('visibilitychange', visible)
-    return () => { generation.current++; clearInterval(interval); request.current?.abort(); request.current = null; document.removeEventListener('visibilitychange', visible) }
+    return () => { generation.current++; clearTimeout(timer.current); request.current?.abort(); request.current = null; document.removeEventListener('visibilitychange', visible) }
   }, [refresh])
-  return <main className="dd-page">
-    <header className="dd-header"><div><h1>{t('panel')}</h1><p>{t('subtitle')}</p></div><div className="dd-controls">
-      <label className="dd-visually-hidden" htmlFor="dd-range">{t('range')}</label><select id="dd-range" value={days} onChange={event => setDays(Number(event.target.value))}><option value={1}>{t('today')}</option><option value={7}>{t('week')}</option><option value={30}>{t('month')}</option></select>
+  const rangePending = !!snapshot && snapshot.days !== days
+  return <main className="dd-page" aria-busy={!snapshot || snapshot.scanning || rangePending}>
+    <header className="dd-header"><h1>{t('panel')}</h1><div className="dd-controls">
+      <label className="dd-visually-hidden" htmlFor="dd-range">{t('range')}</label><select id="dd-range" value={days} onChange={event => { const value = Number(event.target.value); setDays(value); setSnapshot(snapshots.get(value) ?? snapshot) }}><option value={1}>{t('today')}</option><option value={7}>{t('week')}</option><option value={30}>{t('month')}</option></select>
       <button className="dd-button" onClick={() => void refresh()} disabled={busy}>{t('refresh')}</button>
     </div></header>
-    <div className="dd-meta"><span role="status">{snapshot ? <>{snapshot.scanning && <>{t('scanning')} {snapshot.scanned} / {snapshot.totalSessions} · </>}{snapshot.timeZone} · {t('lastRefresh')} {date(snapshot.generatedAt, snapshot.timeZone)}</> : t('loading')}</span><label className="dd-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />{t('showArchived')}</label></div>
+    <div className="dd-meta"><span role="status" title={snapshot?.timeZone}>{rangePending ? t('loading') : snapshot?.cachedAt ? <>{t('cachedResult')} {date(snapshot.cachedAt, snapshot.timeZone)}{snapshot.scanning && <> · {t('backgroundRefresh')}</>}</> : snapshot?.scanning ? <><progress max={snapshot.totalSessions || 1} value={snapshot.scanned} aria-label={t('scanning')} />{t('scanning')} {snapshot.scanned}/{snapshot.totalSessions || '…'}</> : snapshot ? <>{t('lastRefresh')} {date(snapshot.generatedAt, snapshot.timeZone)}</> : t('loading')}</span><label className="dd-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />{t('showArchived')}</label></div>
     {(error || snapshot?.readError) && <p className="dd-notice dd-error" role="alert">{t('readFailed')}</p>}
+    {snapshot?.cacheError && <p className="dd-notice">{t('cacheSaveFailed')}</p>}
     {!!snapshot?.failedSessions && <p className="dd-notice">{t('partial')} · {snapshot.failedSessions}</p>}
     <SessionSection snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
-    <footer className="dd-footer"><p>{t('note')}</p></footer>
+    <footer className="dd-footer"><details><summary>{t('statisticsNote')}</summary><p>{t('note')}</p></details></footer>
   </main>
 }
 function SessionSection({ snapshot, archived, t, openSession }: AppProps & { snapshot: Snapshot | null; archived: boolean }) {
@@ -75,10 +90,11 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     const regular = rows.filter(row => row.kind !== 'superagent')
     const scoped = regular.filter(row => !project || row.projectId === project)
     const projects = new Map(regular.map(row => [row.projectId, row.project || t('noProject')]))
-    const usage = zeroUsage(), series: Record<string, Tokens> = {}
+    const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
     for (const row of scoped) {
       addUsage(usage, row.usage)
       for (const [key, tokens] of Object.entries(row.series)) { const bucket = series[key] ??= zeroTokens(); for (const k of tokenKeys) bucket[k] += tokens[k] }
+      for (const [key, count] of Object.entries(row.toolsSeries)) toolsSeries[key] = (toolsSeries[key] ?? 0) + count
     }
     const query = search.trim().toLocaleLowerCase()
     const filtered = scoped.filter(row => (status === 'all' || (status === 'attention' ? attentionStates.has(row.status) : status === 'running' ? row.running : row.status === status))
@@ -87,11 +103,14 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     const goals = scoped.filter(r => r.goal || r.ticket)
     const complete = goals.filter(completedGoal).length
     const todos = scoped.flatMap(row => row.todos ?? []), done = todos.filter(todo => todo.status === 'completed').length
-    const superagentRows = rows.filter(row => row.kind === 'superagent'), superagentUsage = zeroUsage()
-    for (const row of superagentRows) addUsage(superagentUsage, row.usage)
+    const superagentRows = rows.filter(row => row.kind === 'superagent'), superagentUsage = zeroUsage(), superagentSeries: Record<string, number> = {}
+    for (const row of superagentRows) {
+      addUsage(superagentUsage, row.usage)
+      for (const [key, tokens] of Object.entries(row.series)) superagentSeries[key] = (superagentSeries[key] ?? 0) + tokenTotal(tokens)
+    }
     const superagentGoals = superagentRows.filter(row => row.goal || row.ticket)
-    const superagent = { rows: superagentRows, usage: superagentUsage, goals: superagentGoals, complete: superagentGoals.filter(completedGoal).length }
-    return { scoped, projects, usage, series, filtered, goals, complete, todos, done, superagent }
+    const superagent = { rows: superagentRows, usage: superagentUsage, series: superagentSeries, goals: superagentGoals, complete: superagentGoals.filter(completedGoal).length }
+    return { scoped, projects, usage, series, toolsSeries, filtered, goals, complete, todos, done, superagent }
   }, [snapshot, project, archived, search, status, t])
   const keys = useMemo(() => {
     if (!snapshot) return []
@@ -121,35 +140,37 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
   const go = async (id: string) => { try { await openSession(id) } catch { setError('openError') } }
   const rangeLabel = t(actualDays === 1 ? 'today' : actualDays === 7 ? 'week' : 'month')
   const title = t('regularSessions'), superagent = data.superagent
-  const superagentReady = snapshot && !snapshot.scanning && snapshot.superagent !== 'unavailable'
+  const superagentReady = snapshot && snapshot.superagent !== 'unavailable'
   return <div className="dd-overview">
     <header className="dd-section-head"><h2>{title} <small>{data.scoped.length}</small></h2><div className="dd-controls">
       <label className="dd-visually-hidden" htmlFor="dd-project">{title} · {t('project')}</label><select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}><option value="">{t('allProjects')}</option>{[...data.projects].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
     </div></header>
     {error && <p className="dd-notice dd-error" role="alert">{t('openError')}</p>}
     <section className="dd-stats" aria-label={`${title} · ${t('subtitle')}`}>
-      <Summary label={t('running')} value={String(data.scoped.filter(r => r.running).length)} hint={t('liveNow')} onClick={() => selectStatus('running')} />
-      <Summary label={t('needAttention')} value={String(data.scoped.filter(r => attentionStates.has(r.status)).length)} hint={t('liveNow')} onClick={() => selectStatus('attention')} />
-      <Summary label={t('completed')} value={data.goals.length ? `${data.complete} / ${data.goals.length}` : '—'} hint={t('goalsCount')} />
-      <Summary label={t('tokens')} value={compact(tokenTotal(data.usage.tokens))} hint={`${rangeLabel} · ${t('reportedOnly')}`} />
-      <Summary label={t('checklist')} value={data.todos.length ? `${data.done} / ${data.todos.length}` : '—'} hint={t('items')} />
-      <Summary label={t('cache')} value={input ? `${(data.usage.tokens.cacheRead / input * 100).toFixed(1)}%` : '—'} hint={rangeLabel} />
+      <Summary label={t('running')} value={snapshot ? String(data.scoped.filter(r => r.running).length) : '—'} hint={t('liveNow')} onClick={() => selectStatus('running')} />
+      <Summary label={t('needAttention')} value={snapshot ? String(data.scoped.filter(r => attentionStates.has(r.status)).length) : '—'} hint={t('liveNow')} onClick={() => selectStatus('attention')} />
+      <Summary label={t('completed')} value={data.goals.length ? `${data.complete} / ${data.goals.length}` : '—'} hint={t('goalsCount')}><MiniProgress value={data.complete} total={data.goals.length} /></Summary>
+      <Summary label={t('tokens')} value={snapshot ? compact(tokenTotal(data.usage.tokens)) : '—'} hint={`${rangeLabel} · ${t('reportedOnly')}`}><Sparkline values={keys.map(key => tokenTotal(data.series[key] ?? zeroTokens()))} /></Summary>
+      <Summary label={t('checklist')} value={data.todos.length ? `${data.done} / ${data.todos.length}` : '—'} hint={t('chartProgressHint')}><MiniProgress value={data.done} total={data.todos.length} /></Summary>
+      <Summary label={t('cache')} value={input ? `${(data.usage.tokens.cacheRead / input * 100).toFixed(1)}%` : '—'} hint={rangeLabel}><MiniProgress value={data.usage.tokens.cacheRead} total={input} /></Summary>
     </section>
     <section className="dd-superagent" aria-labelledby="dd-superagent-title">
       <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{t('allProjects')} · {rangeLabel}</span></div>
       <div className="dd-superagent-cards">
         <Summary label={t('running')} value={superagentReady ? String(superagent.rows.filter(row => row.running).length) : '—'} hint={t('liveNow')} />
         <Summary label={t('needAttention')} value={superagentReady ? String(superagent.rows.filter(row => attentionStates.has(row.status)).length) : '—'} hint={t('liveNow')} />
-        <Summary label={t('taskCompleted')} value={superagentReady && superagent.goals.length ? `${superagent.complete} / ${superagent.goals.length}` : '—'} hint={t('goalsCount')} />
-        <Summary label={t('tokens')} value={superagentReady ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')} />
+        <Summary label={t('taskCompleted')} value={superagentReady && superagent.goals.length ? `${superagent.complete} / ${superagent.goals.length}` : '—'} hint={t('goalsCount')}><MiniProgress value={superagentReady ? superagent.complete : 0} total={superagentReady ? superagent.goals.length : 0} /></Summary>
+        <Summary label={t('tokens')} value={superagentReady ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')}><Sparkline values={superagentReady ? keys.map(key => superagent.series[key] ?? 0) : []} /></Summary>
       </div>
       {snapshot?.superagent === 'partial' && <p className="dd-notice">{t('sourcePartial')}</p>}
       {snapshot?.superagent === 'unavailable' && !snapshot.scanning && <p className="dd-notice">{t('sourceUnavailable')}</p>}
     </section>
     <div className="dd-chart-grid">
-      <section className="dd-chart dd-trend"><div className="dd-section-head"><h3>{t('chartTokens')}</h3><span>{rangeLabel}</span></div><TokenChart key={actualDays} series={data.series} keys={keys} t={t} /></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartStatus')}</h3><span>{data.scoped.length}</span></div><p className="dd-caption">{t('chartStatusHint')}</p><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartProgress')}</h3></div><p className="dd-caption">{t('chartProgressHint')}</p><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></section>
+      <section className="dd-chart dd-trend"><div className="dd-section-head"><h3>{t('chartTokens')}</h3></div><TokenChart key={actualDays} series={data.series} keys={keys} t={t} /></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><TokenMixChart tokens={data.usage.tokens} t={t} /></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTools')}</h3><span>{exact(data.usage.toolCalls)}</span></div><ToolChart key={actualDays} series={data.toolsSeries} keys={keys} t={t} /></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></section>
       <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></section>
     </div>
     <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></div></div>

@@ -10,6 +10,45 @@ const colors: Record<Status, string> = { running: 'var(--dd-blue)', approval: 'v
 const tokenColors = { uncachedInput: 'var(--dd-blue)', cacheRead: 'var(--dd-teal)', cacheWrite: 'var(--dd-purple)', output: 'var(--dd-amber)' }
 export function Empty({ t }: { t: T }) { return <div className="dd-empty">{t('noData')}</div> }
 
+export function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1)
+  const points = values.map((value, i) => `${i / Math.max(values.length - 1, 1) * 100},${22 - value / max * 20}`).join(' ')
+  return <svg className="dd-mini dd-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">{values.length > 0 && <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />}</svg>
+}
+
+export function MiniProgress({ value, total }: { value: number; total: number }) {
+  return <div className="dd-mini dd-mini-progress" aria-hidden="true" style={{ visibility: total ? 'visible' : 'hidden' }}><i style={{ width: `${total ? Math.min(100, value / total * 100) : 0}%` }} /></div>
+}
+
+export function TokenMixChart({ tokens, t }: { tokens: Tokens; t: T }) {
+  const total = tokenTotal(tokens)
+  if (!total) return <Empty t={t} />
+  return <div className="dd-token-mix">
+    <div className="dd-mix-bar" role="img" aria-label={tokenKeys.map(key => `${t(key)} ${exact(tokens[key])}`).join(' · ')}>
+      {tokenKeys.map(key => <span key={key} style={{ width: `${tokens[key] / total * 100}%`, background: tokenColors[key] }} title={`${t(key)} ${exact(tokens[key])}`} />)}
+    </div>
+    <div className="dd-mix-legend">{tokenKeys.map(key => <div key={key} title={exact(tokens[key])}><span><i style={{ background: tokenColors[key] }} />{t(key)}</span><strong>{compact(tokens[key])}</strong><small>{(tokens[key] / total * 100).toFixed(1)}%</small></div>)}</div>
+  </div>
+}
+
+export function ToolChart({ series, keys, t }: { series: Record<string, number>; keys: string[]; t: T }) {
+  const [hover, setHover] = useState<number | null>(null)
+  if (!keys.length) return <Empty t={t} />
+  const values = keys.map(key => series[key] ?? 0), max = Math.max(4, Math.ceil(Math.max(...values) / 4) * 4)
+  const W = 500, H = 180, left = 40, right = 10, top = 12, bottom = 28, height = H - top - bottom, step = (W - left - right) / keys.length
+  const short = (key: string) => key.includes('T') ? `${key.slice(-2)}:00` : key.slice(5)
+  return <>
+    <svg viewBox={`0 0 ${W} ${H}`} className="dd-area dd-tools-chart" role="img" aria-label={t('chartTools')}>
+      {[0, .5, 1].map(r => <g key={r}><line x1={left} x2={W - right} y1={top + height * (1 - r)} y2={top + height * (1 - r)} className="dd-gridline" /><text x={left - 8} y={top + height * (1 - r) + 4} textAnchor="end">{compact(max * r)}</text></g>)}
+      {keys.map((key, i) => <g key={key}><rect x={left + i * step + step * .18} y={top + height * (1 - values[i] / max)} width={step * .64} height={height * values[i] / max} rx="2" fill="var(--dd-blue)" opacity={hover === i ? 1 : .72} />
+        <rect x={left + i * step} y={top} width={step} height={height} fill="transparent" tabIndex={0} aria-label={`${key} · ${t('toolCalls')} ${exact(values[i])}`} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}><title>{short(key)} · {exact(values[i])}</title></rect>
+        {(i % Math.max(1, Math.ceil(keys.length / 6)) === 0 || i === keys.length - 1) && <text x={left + (i + .5) * step} y={H - 6} textAnchor="middle">{short(key)}</text>}
+      </g>)}
+    </svg>
+    <div className="dd-chart-readout">{hover !== null ? `${short(keys[hover])} · ${exact(values[hover])}` : '\u00a0'}</div>
+  </>
+}
+
 export function TokenChart({ series, keys, t }: { series: Record<string, Tokens>; keys: string[]; t: T }) {
   const [hidden, setHidden] = useState<string[]>([]), [hover, setHover] = useState<number | null>(null)
   if (!keys.length) return <Empty t={t} />

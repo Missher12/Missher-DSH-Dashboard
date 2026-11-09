@@ -1,5 +1,7 @@
 export const zh = {
+  cachedResult: '上次统计', backgroundRefresh: '后台更新中', cacheSaveFailed: '本地缓存暂时无法保存，重启后将重新统计。',
   regularSessions: '普通会话', taskCompleted: '任务完成',
+  chartTokenMix: 'Token 构成', chartTools: '工具调用趋势', statisticsNote: '统计口径',
   pagination: '会话翻页', previousPage: '上一页', nextPage: '下一页',
   panel: '工作仪表盘', subtitle: '会话、用量与目标进度', project: '项目', allProjects: '全部项目', noProject: '未关联项目',
   range: '时间范围', today: '今天', week: '近 7 天', month: '近 30 天', refresh: '刷新', loading: '正在读取会话记录…',
@@ -17,13 +19,15 @@ export const zh = {
   note: '仅汇总有效用量记录，缺失或无效的记录不计入。派生会话继承的历史不重复统计。',
   sourceUnavailable: 'Superagent 任务接口当前不可用；普通会话统计仍可查看。', sourcePartial: 'Superagent 暂未刷新，保留上次任务信息。',
   stoppedHint: '已结束不等于目标完成', openError: '无法打开该会话，请确认它仍在宿主会话列表中。', chartData: '查看图表数据', time: '时间', total: '合计',
-  sessionsUnit: '个会话', recorded: '已读取', lastRefresh: '数据更新于', archivedExcluded: '未包含归档会话', goalMissing: '未提供可核对的完成记录',
+  sessionsUnit: '个会话', recorded: '已读取', lastRefresh: '更新于', archivedExcluded: '未包含归档会话', goalMissing: '未提供可核对的完成记录',
   'event.user/message': '收到消息', 'event.turn/start': '开始工作', 'event.turn/end': '结束一轮', 'event.tool/call': '调用工具',
   'event.tool/ptc-dispatch-start': '调用子工具', 'event.tool/result': '工具返回错误', 'event.approval/asked': '请求审批', 'event.approval/decided': '审批已处理', 'event.goal/change': '更新目标',
   taskQueued: '等待执行', taskReview: '待验收', taskAnswer: '等待回复', taskDelivery: '交付待处理', toolsRunning: '正在调用',
 }
 export const en: Record<keyof typeof zh, string> = {
+  cachedResult: 'Saved statistics', backgroundRefresh: 'Updating in background', cacheSaveFailed: 'Local cache could not be saved. Statistics will be rebuilt after restart.',
   regularSessions: 'Regular sessions', taskCompleted: 'Tasks complete',
+  chartTokenMix: 'Token breakdown', chartTools: 'Tool call trend', statisticsNote: 'About these statistics',
   pagination: 'Session pages', previousPage: 'Previous', nextPage: 'Next',
   panel: 'Work dashboard', subtitle: 'Sessions, usage and goal progress', project: 'Project', allProjects: 'All projects', noProject: 'No project',
   range: 'Time range', today: 'Today', week: 'Last 7 days', month: 'Last 30 days', refresh: 'Refresh', loading: 'Reading session records…',
