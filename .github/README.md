@@ -1,6 +1,6 @@
 # DSH 工作仪表盘
 
-![工作仪表盘功能示意](../docs/images/overview.svg)
+![Dashboard · 工作仪表盘（品牌插画）](../docs/images/cover-v2.png)
 
 当前版本 **0.2.9** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.2.9)
 

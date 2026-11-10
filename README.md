@@ -1,5 +1,7 @@
 # DSH 工作仪表盘
 
+![Dashboard · 工作仪表盘（品牌插画）](docs/images/cover-v2.png)
+
 `@missher/dsh-dashboard` 0.2.9，适配 DeepSeek Harness 0.2.1-rc.4。安装后从侧栏「工作仪表盘」打开，默认显示近 7 天。
 
 主界面展示六张图表：Token 趋势、会话状态、Token 构成、工具调用趋势、任务清单进度和 Token 排行。概览数字配有用量趋势线、完成进度和缓存命中条；统计说明收在提示与「统计口径」中。图表上方保留四张 Superagent 卡片：工作中、需要关注、任务完成、已记录 Token。Superagent 由任务关联及宿主专用预设识别，不混入普通会话图表或列表。
