@@ -1,4 +1,6 @@
 export const zh = {
+  chartActivity: '活跃会话趋势', chartActivityHint: '每个时段有模型请求、工具调用或已结束轮次的会话数；同一会话只计一次',
+  chartDistribution: '会话 Token 分布', chartDistributionHint: '按所选时间范围内的有效用量分组；不计读取失败或没有有效用量的会话',
   cachedResult: '上次统计', backgroundRefresh: '后台更新中', cacheSaveFailed: '本地缓存暂时无法保存，重启后将重新统计。',
   regularSessions: '普通会话', taskCompleted: '任务完成',
   chartTokenMix: 'Token 构成', chartTools: '工具调用趋势', statisticsNote: '统计口径',
@@ -25,6 +27,8 @@ export const zh = {
   taskQueued: '等待执行', taskReview: '待验收', taskAnswer: '等待回复', taskDelivery: '交付待处理', toolsRunning: '正在调用',
 }
 export const en: Record<keyof typeof zh, string> = {
+  chartActivity: 'Active sessions', chartActivityHint: 'Distinct sessions with model requests, tool calls or ended turns in each time bucket',
+  chartDistribution: 'Session token distribution', chartDistributionHint: 'Sessions grouped by valid recorded usage in this range; unreadable sessions and sessions without valid usage are excluded',
   cachedResult: 'Saved statistics', backgroundRefresh: 'Updating in background', cacheSaveFailed: 'Local cache could not be saved. Statistics will be rebuilt after restart.',
   regularSessions: 'Regular sessions', taskCompleted: 'Tasks complete',
   chartTokenMix: 'Token breakdown', chartTools: 'Tool call trend', statisticsNote: 'About these statistics',
