@@ -1,5 +1,6 @@
 .dd-page { --dd-text:var(--dsw-alias-label-primary,#202124); --dd-muted:var(--dsw-alias-label-tertiary,#777); --dd-line:var(--dsw-alias-border-l3,#e4e4e4); --dd-hover:var(--dsw-alias-interactive-bg-hover,#f3f3f3); --dd-blue:#5989cc; --dd-teal:#529b91; --dd-amber:#c99a52; --dd-purple:#9285bb; --dd-green:#669b78; --dd-red:#cc736f; --dd-faint:color-mix(in srgb,var(--dd-muted) 35%,transparent); box-sizing:border-box; height:100%; overflow:auto; scrollbar-gutter:stable; container-type:inline-size; padding:28px clamp(18px,3vw,40px) 24px; font:inherit; font-size:13px; color:var(--dd-text); background:var(--dsw-alias-bg-base,white); }
 .dd-page *, .dd-page *::before, .dd-page *::after { box-sizing:border-box; }
+.dd-page { overflow-anchor:none; }
 .dd-page h1,.dd-page h2,.dd-page h3,.dd-page h4,.dd-page p { margin:0; }
 .dd-page h1 { font-size:23px; line-height:1.3; font-weight:600; letter-spacing:-.4px; }
 .dd-page h2 { font-size:18px; font-weight:600; }
@@ -18,9 +19,9 @@
 .dd-controls select { max-width:230px; text-align-last:center; padding-inline:26px; }
 .dd-controls input { width:210px; }
 .dd-button:hover { background:var(--dd-hover); }
-.dd-meta { align-items:flex-start; color:var(--dd-muted); font-size:11px; line-height:1.6; flex-wrap:wrap; gap:8px; }
-.dd-meta [role=status] { display:flex; align-items:center; gap:8px; min-height:18px; font-variant-numeric:tabular-nums; }
-.dd-meta progress { width:64px; height:4px; accent-color:var(--dd-teal); }
+.dd-meta { display:grid; grid-template-columns:minmax(0,1fr) auto; color:var(--dd-muted); font-size:11px; line-height:20px; gap:8px; }
+.dd-meta>[role] { height:20px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+.dd-refresh-state { display:inline-block; min-width:7em; margin-left:12px; }
 .dd-check { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; cursor:pointer; }
 .dd-check input { margin:0; accent-color:var(--dd-text); }
 .dd-stats { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); margin:16px 0 22px; border-block:1px solid var(--dd-line); }
@@ -38,8 +39,10 @@
 .dd-superagent-cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
 .dd-superagent-cards .dd-stat { padding:12px 16px; border:1px solid var(--dd-line); border-radius:8px; }
 .dd-superagent-cards .dd-stat strong { font-size:23px; margin:5px 0; }
+.dd-source-notice { height:20px; margin-top:4px!important; font-size:11px; line-height:20px; color:var(--dd-amber); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .dd-chart-grid { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:22px 32px; }
 .dd-chart { min-width:0; padding-bottom:18px; border-bottom:1px solid var(--dd-line); }
+.dd-chart-body { min-height:296px; }
 .dd-section-head { gap:12px; flex-wrap:wrap; margin-bottom:14px; min-height:32px; }
 .dd-section-head>span,.dd-section-head small { color:var(--dd-muted); font-weight:400; font-size:12px; }
 .dd-section-head small { margin-left:8px; }
@@ -48,7 +51,7 @@
 .dd-legend button,.dd-legend>span { display:inline-flex; align-items:center; gap:6px; border:0; background:none; padding:0; min-height:22px; }
 .dd-legend i,.dd-state-legend i { display:inline-block; width:8px; height:8px; border-radius:2px; flex-shrink:0; }
 .dd-legend button[aria-pressed=false] { opacity:.4; text-decoration:line-through; }
-.dd-area { width:100%; display:block; overflow:visible; min-height:160px; }
+.dd-area { width:100%; height:180px; display:block; overflow:visible; }
 .dd-page svg text { fill:var(--dd-muted); font:11px inherit; font-size:11px; }
 .dd-gridline { stroke:var(--dd-line); stroke-width:.7px; }
 .dd-crosshair { stroke:var(--dd-text); stroke-width:1; stroke-dasharray:3 3; }
@@ -64,10 +67,10 @@
 .dd-data { margin-top:8px; color:var(--dd-muted); font-size:11px; }
 .dd-data summary { cursor:pointer; width:fit-content; }
 .dd-data table { width:100%; margin-top:10px; }
-.dd-state-chart { display:flex; align-items:center; justify-content:space-evenly; gap:18px; min-height:220px; }
+.dd-state-chart { display:flex; align-items:center; justify-content:space-evenly; gap:18px; height:240px; }
 .dd-state-chart svg { width:48%; max-width:190px; flex-shrink:0; }
 .dd-page svg .dd-donut-value { font-size:32px; fill:var(--dd-text); font-weight:550; }
-.dd-state-legend { display:grid; gap:2px; width:45%; max-width:190px; }
+.dd-state-legend { display:grid; gap:2px; width:45%; max-width:190px; max-height:240px; overflow-y:auto; }
 .dd-state-legend button { display:flex; align-items:center; gap:8px; min-height:26px; border:0; background:none; padding:3px 0; font-size:12px; text-align:left; }
 .dd-state-legend button:hover span { text-decoration:underline; }
 .dd-state-legend strong { margin-left:auto; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
@@ -83,6 +86,10 @@
 .dd-progress-2 { background:var(--dd-faint); }
 .dd-rank-track span { background:var(--dd-blue); opacity:.8; }
 .dd-rank-list { padding-top:4px; }
+.dd-distribution { padding-top:12px; gap:20px; }
+.dd-distribution .dd-bar-row { min-height:32px; }
+.dd-distribution small { font-weight:400; color:var(--dd-muted); }
+.dd-distribution .dd-bar-row:hover .dd-bar-label { text-decoration:none; }
 .dd-segmented { display:flex; padding:2px; border-radius:7px; background:var(--dd-hover); }
 .dd-segmented button { border:0; border-radius:5px; background:none; padding:2px 9px; font-size:11px; min-height:25px; }
 .dd-segmented button[aria-pressed=true] { background:var(--dsw-alias-bg-base,white); color:var(--dd-text); }
@@ -110,10 +117,6 @@
 .dd-title-button small { display:block; font-size:10px; color:var(--dd-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px; }
 .dd-status { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:11px; }
 .dd-status i { height:5px; width:5px; border-radius:50%; background:var(--dd-muted); }
-.dd-status-running i { background:var(--dd-blue); }
-.dd-status-approval i,.dd-status-attention i,.dd-status-queued i { background:var(--dd-amber); }
-.dd-status-error i,.dd-status-blocked i { background:var(--dd-red); }
-.dd-status-complete i { background:var(--dd-green); }
 .dd-selected { background:var(--dd-hover); }
 .dd-detail { padding:12px 12px 18px; font-size:12px; }
 .dd-detail-head { margin-bottom:16px; }

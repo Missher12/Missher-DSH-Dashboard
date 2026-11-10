@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { tokenKeys, tokenTotal, zeroTokens } from '../fold.ts'
 import type { DashboardRow, Status, Tokens } from '../types.ts'
 import type { T } from './locales.ts'
+import { tokenBands, tokenDistribution } from './data.ts'
 
 export const compact = (n: number): string => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 export const exact = (n: number): string => new Intl.NumberFormat().format(n)
 export const statusOrder: Status[] = ['running', 'approval', 'attention', 'queued', 'blocked', 'error', 'paused', 'idle', 'complete', 'stopped', 'unknown']
-const colors: Record<Status, string> = { running: 'var(--dd-blue)', approval: 'var(--dd-amber)', attention: 'var(--dd-amber)', queued: 'var(--dd-purple)', blocked: 'var(--dd-red)', error: 'var(--dd-red)', paused: 'var(--dd-muted)', idle: 'var(--dd-faint)', complete: 'var(--dd-green)', stopped: 'var(--dd-muted)', unknown: 'var(--dd-muted)' }
+export const statusColors: Record<Status, string> = { running: 'var(--dd-green)', approval: 'var(--dd-red)', attention: 'var(--dd-red)', queued: 'var(--dd-purple)', blocked: 'var(--dd-red)', error: 'var(--dd-red)', paused: 'var(--dd-muted)', idle: 'var(--dd-blue)', complete: 'var(--dd-green)', stopped: 'var(--dd-muted)', unknown: 'var(--dd-red)' }
 const tokenColors = { uncachedInput: 'var(--dd-blue)', cacheRead: 'var(--dd-teal)', cacheWrite: 'var(--dd-purple)', output: 'var(--dd-amber)' }
 export function Empty({ t }: { t: T }) { return <div className="dd-empty">{t('noData')}</div> }
 
@@ -31,22 +32,31 @@ export function TokenMixChart({ tokens, t }: { tokens: Tokens; t: T }) {
   </div>
 }
 
-export function ToolChart({ series, keys, t }: { series: Record<string, number>; keys: string[]; t: T }) {
+export function CountChart({ series, keys, label, t }: { series: Record<string, number>; keys: string[]; label: string; t: T }) {
   const [hover, setHover] = useState<number | null>(null)
   if (!keys.length) return <Empty t={t} />
   const values = keys.map(key => series[key] ?? 0), max = Math.max(4, Math.ceil(Math.max(...values) / 4) * 4)
   const W = 500, H = 180, left = 40, right = 10, top = 12, bottom = 28, height = H - top - bottom, step = (W - left - right) / keys.length
   const short = (key: string) => key.includes('T') ? `${key.slice(-2)}:00` : key.slice(5)
   return <>
-    <svg viewBox={`0 0 ${W} ${H}`} className="dd-area dd-tools-chart" role="img" aria-label={t('chartTools')}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="dd-area dd-count-chart" role="img" aria-label={label}>
       {[0, .5, 1].map(r => <g key={r}><line x1={left} x2={W - right} y1={top + height * (1 - r)} y2={top + height * (1 - r)} className="dd-gridline" /><text x={left - 8} y={top + height * (1 - r) + 4} textAnchor="end">{compact(max * r)}</text></g>)}
       {keys.map((key, i) => <g key={key}><rect x={left + i * step + step * .18} y={top + height * (1 - values[i] / max)} width={step * .64} height={height * values[i] / max} rx="2" fill="var(--dd-blue)" opacity={hover === i ? 1 : .72} />
-        <rect x={left + i * step} y={top} width={step} height={height} fill="transparent" tabIndex={0} aria-label={`${key} · ${t('toolCalls')} ${exact(values[i])}`} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}><title>{short(key)} · {exact(values[i])}</title></rect>
+        <rect x={left + i * step} y={top} width={step} height={height} fill="transparent" tabIndex={0} aria-label={`${key} · ${label} ${exact(values[i])}`} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}><title>{short(key)} · {exact(values[i])}</title></rect>
         {(i % Math.max(1, Math.ceil(keys.length / 6)) === 0 || i === keys.length - 1) && <text x={left + (i + .5) * step} y={H - 6} textAnchor="middle">{short(key)}</text>}
       </g>)}
     </svg>
     <div className="dd-chart-readout">{hover !== null ? `${short(keys[hover])} · ${exact(values[hover])}` : '\u00a0'}</div>
   </>
+}
+
+export function DistributionChart({ rows, t }: { rows: DashboardRow[]; t: T }) {
+  const counts = tokenDistribution(rows), total = counts.reduce((sum, count) => sum + count, 0), max = Math.max(...counts, 1)
+  if (!total) return <Empty t={t} />
+  return <div className="dd-bar-list dd-distribution">{counts.map((count, i) => {
+    const label = i === 0 ? `< ${compact(tokenBands[1])}` : i === tokenBands.length - 1 ? `≥ ${compact(tokenBands[i])}` : `${compact(tokenBands[i])} – < ${compact(tokenBands[i + 1])}`
+    return <div key={i} className="dd-bar-row" title={`${label} tokens · ${count} ${t('sessionsUnit')} · ${(count / total * 100).toFixed(1)}%`}><span className="dd-bar-label">{label}</span><strong>{count} <small>{t('sessionsUnit')}</small></strong><span className="dd-rank-track"><span style={{ width: `${count / max * 100}%` }} /></span></div>
+  })}</div>
 }
 
 export function TokenChart({ series, keys, t }: { series: Record<string, Tokens>; keys: string[]; t: T }) {
@@ -81,9 +91,9 @@ export function StateChart({ rows, t, onSelect }: { rows: DashboardRow[]; t: T; 
   const counts = statusOrder.map(status => ({ status, count: rows.filter(r => r.status === status).length })).filter(r => r.count)
   let offset = 0
   return rows.length ? <div className="dd-state-chart"><svg viewBox="0 0 200 200" role="img" aria-label={t('chartStatus')}>
-    {counts.map(({ status, count }) => { const size = count / rows.length * 100, start = offset; offset += size; return <circle key={status} cx="100" cy="100" r="71" pathLength="100" fill="none" stroke={colors[status]} strokeWidth="21" strokeDasharray={`${size} ${100 - size}`} strokeDashoffset={-start} transform="rotate(-90 100 100)"><title>{t(status)} {count}</title></circle> })}
+    {counts.map(({ status, count }) => { const size = count / rows.length * 100, start = offset; offset += size; return <circle key={status} cx="100" cy="100" r="71" pathLength="100" fill="none" stroke={statusColors[status]} strokeWidth="21" strokeDasharray={`${size} ${100 - size}`} strokeDashoffset={-start} transform="rotate(-90 100 100)"><title>{t(status)} {count}</title></circle> })}
     <text x="100" y="100" textAnchor="middle" className="dd-donut-value">{rows.length}</text><text x="100" y="123" textAnchor="middle">{t('sessionsUnit')}</text>
-  </svg><div className="dd-state-legend">{counts.map(({ status, count }) => <button key={status} onClick={() => onSelect(status)}><i style={{ background: colors[status] }} /><span>{t(status)}</span><strong>{count}</strong></button>)}</div></div> : <Empty t={t} />
+  </svg><div className="dd-state-legend">{counts.map(({ status, count }) => <button key={status} onClick={() => onSelect(status)}><i style={{ background: statusColors[status] }} /><span>{t(status)}</span><strong>{count}</strong></button>)}</div></div> : <Empty t={t} />
 }
 
 export function ProgressChart({ rows, t, onSelect }: { rows: DashboardRow[]; t: T; onSelect: (id: string) => void }) {
