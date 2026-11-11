@@ -1,7 +1,9 @@
 import { Fragment, useLayoutEffect, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import type { DashboardRow } from '../types.ts'
-import { compact, CountChart, exact, statusColors } from './charts.tsx'
+import { CountChart, MetricNumber, statusColors } from './charts.tsx'
+import { tokenTotal } from '../fold.ts'
+import { numberFormat } from './numbers.ts'
 import type { activityHeatmap } from './data.ts'
 import type { T } from './locales.ts'
 
@@ -14,24 +16,28 @@ export function StatusLabel({ row, t }: { row: DashboardRow; t: T }) {
 export function SessionDeck({ rows, ready, projectControl, onSelect, t }: {
   rows: DashboardRow[]; ready: boolean; projectControl: ReactNode; onSelect: (id: string) => void; t: T
 }) {
+  const { compact, exact } = numberFormat(t('numberLocale'))
   const [page, setPage] = useState(0)
   const pageCount = Math.max(1, Math.ceil(rows.length / 4))
   const current = Math.min(page, pageCount - 1)
   useLayoutEffect(() => { if (page !== current) setPage(current) }, [page, current])
   return <section className="dd-feature dd-deck" aria-labelledby="dd-deck-title">
     <div className="dd-card-head">
-      <div><h2 id="dd-deck-title">{t('regularSessions')}</h2><strong className="dd-big">{ready ? exact(rows.length) : '—'}</strong></div>
+      <div><h2 id="dd-deck-title">{t('regularSessions')}</h2><MetricNumber value={ready ? rows.length : null} unit={t('sessionsUnit')} t={t} /></div>
       {projectControl}
     </div>
     <div className="dd-deck-items">
       {rows.slice(current * 4, current * 4 + 4).map(row => {
         const project = row.project || t('noProject')
+        const usage = row.usage.reported > 0 && !row.unavailable ? tokenTotal(row.usage.tokens) : null
         return <button key={row.id} className="dd-session-tile" onClick={() => onSelect(row.id)} title={row.title || row.id}>
-          <span className="dd-tile-main">
-            <span className="dd-monogram" aria-hidden="true" style={{ '--dd-status-color': statusColors[row.status] } as CSSProperties}>{Array.from(project)[0]}</span>
-            <span className="dd-tile-copy"><strong>{row.title || row.id}</strong><small>{project}</small></span>
+          <span className="dd-tile-copy"><strong>{row.title || row.id}</strong><small>{project}</small></span>
+          <span className="dd-tile-foot">
+            <StatusLabel row={row} t={t} />
+            <span className="dd-tile-tokens" title={usage === null ? t('noUsage') : exact(usage) + ' Token'}>
+              {usage === null ? '—' : <>{compact(usage)} <small>Token</small></>}
+            </span>
           </span>
-          <StatusLabel row={row} t={t} />
         </button>
       })}
       {!rows.length && <div className="dd-deck-empty">{t(ready ? 'noData' : 'loading')}</div>}
@@ -50,25 +56,28 @@ export function ActivityTrend({ tools, active, toolsTotal, activeTotal, keys, t 
   const [mode, setMode] = useState<'tools' | 'sessions'>('tools')
   const showTools = mode === 'tools'
   const label = t(showTools ? 'chartTools' : 'chartActivity')
+  const unit = t(showTools ? 'countCalls' : 'sessionsUnit')
   return <section className="dd-feature dd-volume" aria-label={label}>
     <div className="dd-card-head">
-      <div><h2>{label}</h2><strong className="dd-big" title={exact(showTools ? toolsTotal : activeTotal)}>{keys.length ? compact(showTools ? toolsTotal : activeTotal) : '—'}</strong></div>
+      <div><h2>{label}</h2><MetricNumber value={keys.length ? (showTools ? toolsTotal : activeTotal) : null} unit={unit} t={t} /></div>
       <div className="dd-segmented" role="group" aria-label={t('trendMetric')}>
         <button aria-pressed={showTools} onClick={() => setMode('tools')}>{t('toolCalls')}</button>
         <button aria-pressed={!showTools} onClick={() => setMode('sessions')}>{t('activeSessions')}</button>
       </div>
     </div>
-    <CountChart series={showTools ? tools : active} keys={keys} label={label} t={t} />
+    <CountChart series={showTools ? tools : active} keys={keys} label={label} unit={unit} t={t} />
   </section>
 }
 
 export function ActivityHeatmap({ heat, turns, hitRate, ready, t }: {
   heat: ReturnType<typeof activityHeatmap>; turns: number; hitRate: string; ready: boolean; t: T
 }) {
+  const { exact, compact } = numberFormat(t('numberLocale'))
   const weekdays = t('weekdayNames').split('|')
   const [focused, setFocused] = useState(0)
   const [reading, setReading] = useState<number | null>(null)
-  const peak = Math.max(1, ...heat.cells)
+  const peak = Math.max(0, ...heat.cells)
+  const busiest = peak ? heat.cells.indexOf(peak) : null
   const describe = (index: number) => weekdays[Math.floor(index / 24)] + ' ' + String(index % 24).padStart(2, '0') + ':00 · ' + heat.cells[index] + ' ' + t('sessionsUnit')
   const move = (event: KeyboardEvent<HTMLButtonElement>, cell: number) => {
     const rowStart = Math.floor(cell / 24) * 24
@@ -91,7 +100,7 @@ export function ActivityHeatmap({ heat, turns, hitRate, ready, t }: {
   ]
   return <section className="dd-feature dd-heat-card" aria-labelledby="dd-heat-title">
     <div className="dd-card-head"><div><h2 id="dd-heat-title" title={t('heatHint')}>{t('heatTitle')}</h2>
-      <strong className="dd-big">{ready ? exact(heat.sessions) : '—'} <small>{t('activeSessions')}</small></strong></div>
+      <MetricNumber value={ready ? heat.sessions : null} unit={t('activeSessions')} t={t} /></div>
     </div>
     <dl className="dd-heat-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{ready ? value : '—'}</dd></div>)}</dl>
     <div className="dd-heat-grid" role="group" aria-label={t('heatHint')} onMouseLeave={() => setReading(null)}>
@@ -108,6 +117,6 @@ export function ActivityHeatmap({ heat, turns, hitRate, ready, t }: {
       </Fragment>)}
       {[0, 6, 12, 18, 23].map(hour => <span key={hour} className="dd-heat-hour" style={{ gridColumn: hour + 2 }}>{String(hour).padStart(2, '0')}</span>)}
     </div>
-    <div className="dd-heat-foot"><span>{reading === null ? '' : describe(reading)}</span><span className="dd-heat-scale" aria-hidden="true">{t('less')}{[0,1,2,3,4].map(n => <i key={n} className={'dd-heat-' + n} />)}{t('more')}</span></div>
+    <div className="dd-heat-foot"><span>{reading !== null ? describe(reading) : busiest === null ? '' : t('busiest') + ' · ' + describe(busiest)}</span><span className="dd-heat-scale" aria-hidden="true">{t('less')}{[0,1,2,3,4].map(n => <i key={n} className={'dd-heat-' + n} />)}{t('more')}</span></div>
   </section>
 }

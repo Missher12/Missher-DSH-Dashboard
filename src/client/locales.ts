@@ -1,4 +1,5 @@
 export const zh = {
+  numberLocale: 'zh-CN', countCalls: '次', peak: '峰值', busiest: '最活跃',
   cardPages: '会话卡片翻页', trendMetric: '趋势指标', sessionOverview: '普通会话概况', activeSessions: '活跃会话',
   heatTitle: '会话活跃时段', heatHint: '按宿主时区统计所选范围内的活跃会话。相同会话在同一星期、同一小时的格子只计一次。',
   activeDays: '活跃天数', activeHours: '活跃小时', endedTurns: '已结束轮次', weekdayNames: '周一|周二|周三|周四|周五|周六|周日', less: '少', more: '多',
@@ -30,6 +31,7 @@ export const zh = {
   taskQueued: '等待执行', taskReview: '待验收', taskAnswer: '等待回复', taskDelivery: '交付待处理', toolsRunning: '正在调用',
 }
 export const en: Record<keyof typeof zh, string> = {
+  numberLocale: 'en-US', countCalls: 'calls', peak: 'Peak', busiest: 'Busiest',
   cardPages: 'Session card pages', trendMetric: 'Trend metric', sessionOverview: 'Session overview', activeSessions: 'Active sessions',
   heatTitle: 'Session activity by hour', heatHint: 'Distinct active sessions by weekday and hour in the host time zone over the selected range.',
   activeDays: 'Active days', activeHours: 'Active hours', endedTurns: 'Ended turns', weekdayNames: 'Mon|Tue|Wed|Thu|Fri|Sat|Sun', less: 'Less', more: 'More',

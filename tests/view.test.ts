@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { acceptSnapshot, activityCounts, activityHeatmap, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
 import { foldSession, zeroUsage } from '../src/fold.ts'
+import { axisMaximum, numberFormat } from '../src/client/numbers.ts'
 import type { DashboardRow, Snapshot } from '../src/types.ts'
 
 function row(id: string, tokens = 100, updatedAt = 100): DashboardRow {
@@ -47,4 +48,18 @@ test('heatmap counts distinct sessions across weeks using the recorded local dat
   assert.equal(heat.cells[167], 1)
   assert.equal(heat.cells.reduce((sum, value) => sum + value, 0), 3)
   assert.deepEqual([heat.sessions, heat.days, heat.hours], [2, 3, 3])
+})
+
+test('dashboard figures use the UI language and rounded axes without clipping the peak', () => {
+  const zh = numberFormat('zh-CN'), en = numberFormat('en-US')
+  assert.equal(zh.compact(9_876), '9,876')
+  assert.deepEqual(zh.parts(105_234_567), { number: '1.05', scale: '亿' })
+  assert.deepEqual(en.parts(105_234_567), { number: '105', scale: 'M' })
+  assert.equal(zh.exact(105_234_567), '105,234,567')
+  assert.equal(axisMaximum(72_823_471), 80_000_000)
+  assert.equal(axisMaximum(499), 500)
+  for (const peak of [0, 1, 7, 2001, 9999, 10_001, 99_999_999]) {
+    const maximum = axisMaximum(peak)
+    assert.ok(maximum >= peak && maximum > 0 && Number.isInteger(maximum / 2))
+  }
 })
