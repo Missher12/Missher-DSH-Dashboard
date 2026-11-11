@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { tokenKeys, tokenTotal, zeroTokens } from '../fold.ts'
 import type { DashboardRow, Status, Tokens } from '../types.ts'
 import type { T } from './locales.ts'
@@ -32,21 +32,37 @@ export function TokenMixChart({ tokens, t }: { tokens: Tokens; t: T }) {
   </div>
 }
 
+const shortTime = (key: string) => key.includes('T') ? key.slice(-2) + ':00' : key.slice(5)
+
+function Plot({ keys, max, bars = false, children }: { keys: string[]; max: number; bars?: boolean; children: ReactNode }) {
+  const last = keys.length - 1
+  const tickCount = keys.length === 7 ? 7 : Math.min(5, keys.length)
+  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round(i * last / Math.max(1, tickCount - 1)))
+  return <div className="dd-plot">
+    <div className="dd-y-axis" aria-hidden="true">{[1, .5, 0].map(fraction => <span key={fraction}>{compact(max * fraction)}</span>)}</div>
+    <div className="dd-plot-field">{children}</div>
+    <div className="dd-x-axis" aria-hidden="true">{ticks.map(index => {
+      const percent = bars ? (index + .5) / keys.length : index / Math.max(1, last)
+      return <span key={index} data-edge={index === 0 ? 'first' : index === last ? 'last' : undefined} style={{ left: String(percent * 100) + '%' }}>{shortTime(keys[index])}</span>
+    })}</div>
+  </div>
+}
+
 export function CountChart({ series, keys, label, t }: { series: Record<string, number>; keys: string[]; label: string; t: T }) {
-  const [hover, setHover] = useState<number | null>(null)
+  const [hover, setHover] = useState<string | null>(null)
   if (!keys.length) return <Empty t={t} />
-  const values = keys.map(key => series[key] ?? 0), max = Math.max(4, Math.ceil(Math.max(...values) / 4) * 4)
-  const W = 500, H = 180, left = 40, right = 10, top = 12, bottom = 28, height = H - top - bottom, step = (W - left - right) / keys.length
-  const short = (key: string) => key.includes('T') ? `${key.slice(-2)}:00` : key.slice(5)
+  const values = keys.map(key => series[key] ?? 0)
+  const max = Math.max(2, Math.ceil(Math.max(...values) / 2) * 2)
   return <>
-    <svg viewBox={`0 0 ${W} ${H}`} className="dd-area dd-count-chart" role="img" aria-label={label}>
-      {[0, .5, 1].map(r => <g key={r}><line x1={left} x2={W - right} y1={top + height * (1 - r)} y2={top + height * (1 - r)} className="dd-gridline" /><text x={left - 8} y={top + height * (1 - r) + 4} textAnchor="end">{compact(max * r)}</text></g>)}
-      {keys.map((key, i) => <g key={key}><rect x={left + i * step + step * .18} y={top + height * (1 - values[i] / max)} width={step * .64} height={height * values[i] / max} rx="2" fill="var(--dd-blue)" opacity={hover === i ? 1 : .72} />
-        <rect x={left + i * step} y={top} width={step} height={height} fill="transparent" tabIndex={0} aria-label={`${key} · ${label} ${exact(values[i])}`} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}><title>{short(key)} · {exact(values[i])}</title></rect>
-        {(i % Math.max(1, Math.ceil(keys.length / 6)) === 0 || i === keys.length - 1) && <text x={left + (i + .5) * step} y={H - 6} textAnchor="middle">{short(key)}</text>}
-      </g>)}
-    </svg>
-    <div className="dd-chart-readout">{hover !== null ? `${short(keys[hover])} · ${exact(values[hover])}` : '\u00a0'}</div>
+    <Plot keys={keys} max={max} bars>
+      <div className="dd-columns" role="group" aria-label={label}>
+        {keys.map((key, index) => <button key={key} className="dd-column" aria-label={shortTime(key) + ' · ' + label + ' ' + exact(values[index])}
+          onFocus={() => setHover(key)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(key)} onMouseLeave={() => setHover(null)} onClick={() => setHover(key)}>
+          <span style={{ height: String(values[index] / max * 100) + '%' }} />
+        </button>)}
+      </div>
+    </Plot>
+    <div className="dd-chart-readout">{hover && keys.includes(hover) ? shortTime(hover) + ' · ' + label + ' ' + exact(series[hover] ?? 0) : null}</div>
   </>
 }
 
@@ -60,31 +76,49 @@ export function DistributionChart({ rows, t }: { rows: DashboardRow[]; t: T }) {
 }
 
 export function TokenChart({ series, keys, t }: { series: Record<string, Tokens>; keys: string[]; t: T }) {
-  const [hidden, setHidden] = useState<string[]>([]), [hover, setHover] = useState<number | null>(null)
-  if (!keys.length) return <Empty t={t} />
-  const active = tokenKeys.filter(k => !hidden.includes(k)), points = keys.map(k => series[k] ?? zeroTokens())
-  const totals = points.map(p => active.reduce((sum, k) => sum + p[k], 0)), max = Math.max(...totals, 1)
-  const W = 650, H = 212, left = 48, right = 12, top = 12, bottom = 27, width = W - left - right, height = H - top - bottom
-  const x = (i: number) => left + width * i / Math.max(keys.length - 1, 1), y = (v: number) => top + height * (1 - v / max)
-  let baseline = points.map(() => 0)
-  const layers = active.map(k => {
-    const low = baseline, high = points.map((p, i) => low[i] + p[k]); baseline = high
-    return { k, path: `M${high.map((v, i) => `${x(i)},${y(v)}`).join(' L')} L${low.map((_, i) => `${x(low.length - 1 - i)},${y(low[low.length - 1 - i])}`).join(' L')}Z` }
-  })
-  const short = (key: string) => key.includes('T') ? `${key.slice(-2)}:00` : key.slice(5)
-  return <>
-    <div className="dd-legend">{tokenKeys.map(k => <button key={k} aria-pressed={!hidden.includes(k)} onClick={() => setHidden(h => h.includes(k) ? h.filter(v => v !== k) : [...h, k])}><i style={{ background: tokenColors[k] }} />{t(k)}</button>)}</div>
-    <svg viewBox={`0 0 ${W} ${H}`} className="dd-area" role="img" aria-label={t('chartTokens')}>
-      {[0, .25, .5, .75, 1].map(r => <g key={r}><line x1={left} x2={W - right} y1={y(max * r)} y2={y(max * r)} className="dd-gridline" /><text x={left - 9} y={y(max * r) + 4} textAnchor="end">{compact(max * r)}</text></g>)}
-      {layers.map(({ k, path }) => <path key={k} d={path} fill={tokenColors[k]} opacity=".8" />)}
-      {keys.map((key, i) => i % Math.max(1, Math.ceil(keys.length / 7)) === 0 || i === keys.length - 1 ? <text key={key} x={x(i)} y={H - 7} textAnchor={i === 0 ? 'start' : i === keys.length - 1 ? 'end' : 'middle'}>{short(key)}</text> : null)}
-      {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={top} y2={H - bottom} className="dd-crosshair" />}
-      {points.map((p, i) => <rect key={keys[i]} x={Math.max(left, x(i) - width / (keys.length - 1) / 2)} y={top} width={width / Math.max(keys.length - 1, 1) / (i === 0 || i === points.length - 1 ? 2 : 1)} height={height}
-        fill="transparent" tabIndex={0} aria-label={`${keys[i]} · ${exact(tokenTotal(p))} tokens`} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}><title>{keys[i]} · {tokenKeys.map(k => `${t(k)} ${exact(p[k])}`).join(' · ')}</title></rect>)}
-    </svg>
-    <div className="dd-chart-readout">{hover !== null ? `${short(keys[hover])} · ${tokenKeys.map(k => `${t(k)} ${compact(points[hover][k])}`).join(' · ')}` : `${t('total')} ${exact(points.reduce((s, p) => s + tokenTotal(p), 0))} tokens`}</div>
-    <details className="dd-data"><summary>{t('chartData')}</summary><div className="dd-table-scroll"><table><thead><tr><th>{t('time')}</th>{tokenKeys.map(k => <th key={k}>{t(k)}</th>)}</tr></thead><tbody>{keys.map((k, i) => <tr key={k}><th>{short(k)}</th>{tokenKeys.map(b => <td key={b}>{exact(points[i][b])}</td>)}</tr>)}</tbody></table></div></details>
-  </>
+  const [hidden, setHidden] = useState<string[]>([])
+  const [hover, setHover] = useState<string | null>(null)
+  const fillId = useId()
+  const active = tokenKeys.filter(key => !hidden.includes(key))
+  const points = keys.map(key => series[key] ?? zeroTokens())
+  const totals = points.map(point => active.reduce((sum, key) => sum + point[key], 0))
+  const total = totals.reduce((sum, value) => sum + value, 0)
+  const max = Math.max(1, ...totals)
+  const x = (index: number) => index * 500 / Math.max(1, keys.length - 1)
+  const y = (value: number) => 97 - 94 * value / max
+  // The curve stays between adjacent samples, including when a period has no usage.
+  const segments = totals.map((value, index) => {
+    if (!index) return 'M0,' + y(value)
+    const mid = (x(index - 1) + x(index)) / 2
+    return 'C' + mid + ',' + y(totals[index - 1]) + ' ' + mid + ',' + y(value) + ' ' + x(index) + ',' + y(value)
+  }).join(' ')
+  const hovered = hover === null ? -1 : keys.indexOf(hover)
+  return <section className="dd-feature dd-token-line" aria-labelledby="dd-line-title">
+    <div className="dd-card-head"><div><h2 id="dd-line-title">{t('chartTokens')}</h2><strong className="dd-big" title={exact(total)}>{keys.length ? compact(total) : '—'}</strong></div>
+      <details className="dd-data"><summary>{t('chartData')}</summary><div className="dd-table-scroll"><table>
+        <thead><tr><th>{t('time')}</th>{tokenKeys.map(key => <th key={key}>{t(key)}</th>)}</tr></thead>
+        <tbody>{keys.map((key, i) => <tr key={key}><th>{shortTime(key)}</th>{tokenKeys.map(type => <td key={type}>{exact(points[i][type])}</td>)}</tr>)}</tbody>
+      </table></div></details>
+    </div>
+    <div className="dd-legend dd-token-legend">{tokenKeys.map(key => <button key={key} aria-pressed={!hidden.includes(key)}
+      onClick={() => setHidden(list => list.includes(key) ? list.filter(value => value !== key) : [...list, key])}><i />{t(key)}</button>)}</div>
+    {keys.length ? <Plot keys={keys} max={max}>
+      <svg className="dd-line-plot" viewBox="0 0 500 100" preserveAspectRatio="none" role="group" aria-label={t('chartTokens')}>
+        <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop stopColor="var(--dd-lime)" stopOpacity=".36" /><stop offset="1" stopColor="var(--dd-lime)" stopOpacity=".05" /></linearGradient></defs>
+        <path d={segments + ' L500,100 L0,100Z'} fill={'url(#' + fillId + ')'} />
+        <path d={segments} fill="none" stroke="var(--dd-lime-line)" strokeWidth="2.3" vectorEffect="non-scaling-stroke" />
+        {hovered >= 0 && <line x1={x(hovered)} x2={x(hovered)} y1="0" y2="100" className="dd-crosshair" vectorEffect="non-scaling-stroke" />}
+        {keys.map((key, index) => {
+          const half = 250 / Math.max(1, keys.length - 1)
+          const left = Math.max(0, x(index) - half)
+          return <rect key={key} x={left} y="0" width={Math.min(500, x(index) + half) - left} height="100" fill="transparent" tabIndex={0}
+            aria-label={key + ' · ' + exact(totals[index]) + ' tokens'} onFocus={() => setHover(key)} onBlur={() => setHover(null)}
+            onMouseEnter={() => setHover(key)} onMouseLeave={() => setHover(null)} onClick={() => setHover(key)}><title>{key + ' · ' + exact(totals[index]) + ' tokens'}</title></rect>
+        })}
+      </svg>
+    </Plot> : <Empty t={t} />}
+    <div className="dd-chart-readout">{hovered >= 0 ? shortTime(keys[hovered]) + ' · ' + exact(totals[hovered]) + ' tokens' : null}</div>
+  </section>
 }
 
 export function StateChart({ rows, t, onSelect }: { rows: DashboardRow[]; t: T; onSelect: (status: Status) => void }) {

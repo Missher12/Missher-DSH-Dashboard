@@ -1,4 +1,7 @@
 export const zh = {
+  cardPages: '会话卡片翻页', trendMetric: '趋势指标', sessionOverview: '普通会话概况', activeSessions: '活跃会话',
+  heatTitle: '会话活跃时段', heatHint: '按宿主时区统计所选范围内的活跃会话。相同会话在同一星期、同一小时的格子只计一次。',
+  activeDays: '活跃天数', activeHours: '活跃小时', endedTurns: '已结束轮次', weekdayNames: '周一|周二|周三|周四|周五|周六|周日', less: '少', more: '多',
   chartActivity: '活跃会话趋势', chartActivityHint: '每个时段有模型请求、工具调用或已结束轮次的会话数；同一会话只计一次',
   chartDistribution: '会话 Token 分布', chartDistributionHint: '按所选时间范围内的有效用量分组；不计读取失败或没有有效用量的会话',
   cachedResult: '上次统计', backgroundRefresh: '后台更新中', cacheSaveFailed: '本地缓存暂时无法保存，重启后将重新统计。',
@@ -27,6 +30,9 @@ export const zh = {
   taskQueued: '等待执行', taskReview: '待验收', taskAnswer: '等待回复', taskDelivery: '交付待处理', toolsRunning: '正在调用',
 }
 export const en: Record<keyof typeof zh, string> = {
+  cardPages: 'Session card pages', trendMetric: 'Trend metric', sessionOverview: 'Session overview', activeSessions: 'Active sessions',
+  heatTitle: 'Session activity by hour', heatHint: 'Distinct active sessions by weekday and hour in the host time zone over the selected range.',
+  activeDays: 'Active days', activeHours: 'Active hours', endedTurns: 'Ended turns', weekdayNames: 'Mon|Tue|Wed|Thu|Fri|Sat|Sun', less: 'Less', more: 'More',
   chartActivity: 'Active sessions', chartActivityHint: 'Distinct sessions with model requests, tool calls or ended turns in each time bucket',
   chartDistribution: 'Session token distribution', chartDistributionHint: 'Sessions grouped by valid recorded usage in this range; unreadable sessions and sessions without valid usage are excluded',
   cachedResult: 'Saved statistics', backgroundRefresh: 'Updating in background', cacheSaveFailed: 'Local cache could not be saved. Statistics will be rebuilt after restart.',

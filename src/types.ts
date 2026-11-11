@@ -47,6 +47,7 @@ export interface DashboardRow extends Omit<FoldedSession, 'hours' | 'lifetime'> 
   ticket?: Ticket
   lifetimeTokens: number | null
   usage: Usage
+  activeHours: string[]
   series: Record<string, Tokens>
   toolsSeries: Record<string, number>
   unavailable?: boolean

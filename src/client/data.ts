@@ -26,8 +26,36 @@ export function retainRowOrder(rows: DashboardRow[], ids: string[]): DashboardRo
 
 export function activityCounts(rows: DashboardRow[]): Record<string, number> {
   const counts: Record<string, number> = {}
-  for (const row of rows) for (const key of Object.keys(row.series)) counts[key] = (counts[key] ?? 0) + 1
+  for (const row of rows) {
+    if (row.unavailable) continue
+    for (const key of Object.keys(row.series)) counts[key] = (counts[key] ?? 0) + 1
+  }
   return counts
+}
+
+/** Hours already use the host time zone. A session counts once per weekday/hour cell across the selected period. */
+export function activityHeatmap(rows: DashboardRow[]) {
+  const cells = Array<number>(7 * 24).fill(0)
+  const dates = new Map<string, number>()
+  const hours = new Set<string>()
+  let sessions = 0
+  for (const row of rows) {
+    if (row.unavailable || !row.activeHours?.length) continue
+    sessions++
+    const visited = new Set<number>()
+    for (const hour of row.activeHours) {
+      hours.add(hour)
+      const day = hour.slice(0, 10)
+      let weekday = dates.get(day)
+      if (weekday === undefined) {
+        weekday = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7
+        dates.set(day, weekday)
+      }
+      visited.add(weekday * 24 + Number(hour.slice(11)))
+    }
+    for (const cell of visited) cells[cell]++
+  }
+  return { cells, sessions, days: dates.size, hours: hours.size }
 }
 
 export const tokenBands = [0, 10_000, 100_000, 1_000_000, 10_000_000]

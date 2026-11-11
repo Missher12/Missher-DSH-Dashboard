@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { acceptSnapshot, activityCounts, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
+import { acceptSnapshot, activityCounts, activityHeatmap, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
 import { foldSession, zeroUsage } from '../src/fold.ts'
 import type { DashboardRow, Snapshot } from '../src/types.ts'
 
 function row(id: string, tokens = 100, updatedAt = 100): DashboardRow {
   const usage = zeroUsage(); usage.reported = 1; usage.tokens.uncachedInput = tokens
   return { ...foldSession({ id, createdAt: 1 }, [], 'UTC'), updatedAt, title: id, status: 'idle', running: false, live: false, archived: false,
-    project: 'Project', projectId: 'p', kind: 'session', lifetimeTokens: tokens, usage, series: { '2026-11-10': { ...usage.tokens } }, toolsSeries: {} }
+    project: 'Project', projectId: 'p', kind: 'session', lifetimeTokens: tokens, usage, activeHours: [], series: { '2026-11-10': { ...usage.tokens } }, toolsSeries: {} }
 }
 const snapshot = (rows: DashboardRow[], scanning = false): Snapshot => ({ days: 7, generatedAt: 100, timeZone: 'UTC', today: '2026-11-10', fromDate: '2026-11-04', scanned: 0, totalSessions: rows.length, failedSessions: 0, scanning, superagent: 'available', rows })
 
@@ -37,4 +37,14 @@ test('activity counts distinct sessions per bucket and token bands use valid rec
   assert.deepEqual(activityCounts(rows), { '2026-11-10': 6, '2026-11-09': 1 })
   const missing = row('missing'); missing.usage.reported = 0
   assert.deepEqual(tokenDistribution([...rows, missing, { ...row('unreadable'), unavailable: true }]), [2, 1, 1, 1, 1])
+})
+
+test('heatmap counts distinct sessions across weeks using the recorded local date and hour', () => {
+  const first = { ...row('a'), activeHours: ['2026-11-02T00', '2026-11-09T00', '2026-11-08T23'] }
+  const second = { ...row('b'), activeHours: ['2026-11-09T00'] }
+  const heat = activityHeatmap([first, second, row('empty'), { ...second, unavailable: true }])
+  assert.equal(heat.cells[0], 2)
+  assert.equal(heat.cells[167], 1)
+  assert.equal(heat.cells.reduce((sum, value) => sum + value, 0), 3)
+  assert.deepEqual([heat.sessions, heat.days, heat.hours], [2, 3, 3])
 })
