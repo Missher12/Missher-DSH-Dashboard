@@ -1,8 +1,9 @@
 export const zh = {
   numberLocale: 'zh-CN', countCalls: '次', peak: '峰值',
   cardPages: '会话卡片翻页', trendMetric: '趋势指标', sessionOverview: '普通会话概况', activeSessions: '活跃会话',
-  heatTitle: '使用统计', heatHint: '按本地星期和小时累加有效 Token 用量。颜色越深，用量越多。',
-  weekdayNames: '周一|周二|周三|周四|周五|周六|周日', less: '少', more: '多',
+  heatTitle: '使用统计', allHistory: '全部历史', totalTokens: '累计 Token 数', peakDaily: '单日峰值 Token', longestSession: '最长会话', currentStreak: '当前连续天数', longestStreak: '最长连续天数',
+  tokenActivity: 'Token 活动', particleRange: '最近 53 周的 Token 活动', daily: '每日', weekly: '每周', cumulative: '累计', through: '截至',
+  hourActivity: '小时活动', dayTotal: '当日合计', particleColor: '颗粒颜色', colorMenu: '配色', themeColor: '跟随主题', violetColor: '紫罗兰', blueColor: '蓝色', tealColor: '青绿', amberColor: '暖金', roseColor: '烟粉', customColor: '自定义颜色…',
   chartActivity: '活跃会话趋势', chartActivityHint: '每个时段有模型请求、工具调用或已结束轮次的会话数；同一会话只计一次',
   chartDistribution: '会话 Token 分布', chartDistributionHint: '按所选时间范围内的有效用量分组；不计读取失败或没有有效用量的会话',
   cachedResult: '上次统计', backgroundRefresh: '后台更新中', cacheSaveFailed: '本地缓存暂时无法保存，重启后将重新统计。',
@@ -33,8 +34,9 @@ export const zh = {
 export const en: Record<keyof typeof zh, string> = {
   numberLocale: 'en-US', countCalls: 'calls', peak: 'Peak',
   cardPages: 'Session card pages', trendMetric: 'Trend metric', sessionOverview: 'Session overview', activeSessions: 'Active sessions',
-  heatTitle: 'Usage statistics', heatHint: 'Reported tokens by local weekday and hour. Darker cells mean more tokens.',
-  weekdayNames: 'Mon|Tue|Wed|Thu|Fri|Sat|Sun', less: 'Less', more: 'More',
+  heatTitle: 'Usage statistics', allHistory: 'All history', totalTokens: 'Total tokens', peakDaily: 'Peak daily tokens', longestSession: 'Longest session', currentStreak: 'Current streak (days)', longestStreak: 'Longest streak (days)',
+  tokenActivity: 'Token activity', particleRange: 'Token activity over the latest 53 weeks', daily: 'Daily', weekly: 'Weekly', cumulative: 'Cumulative', through: 'Through',
+  hourActivity: 'Hourly activity', dayTotal: 'Day total', particleColor: 'Particle colour', colorMenu: 'Colour', themeColor: 'Theme', violetColor: 'Violet', blueColor: 'Blue', tealColor: 'Teal', amberColor: 'Amber', roseColor: 'Rose', customColor: 'Custom colour…',
   chartActivity: 'Active sessions', chartActivityHint: 'Distinct sessions with model requests, tool calls or ended turns in each time bucket',
   chartDistribution: 'Session token distribution', chartDistributionHint: 'Sessions grouped by valid recorded usage in this range; unreadable sessions and sessions without valid usage are excluded',
   cachedResult: 'Saved statistics', backgroundRefresh: 'Updating in background', cacheSaveFailed: 'Local cache could not be saved. Statistics will be rebuilt after restart.',

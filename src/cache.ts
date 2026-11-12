@@ -27,6 +27,7 @@ function row(v: any): boolean {
     && (v.goal === undefined || object(v.goal) && typeof v.goal.objective === 'string' && ['active', 'paused', 'blocked', 'complete'].includes(v.goal.phase)
       && count(v.goal.rounds) && (v.goal.maxRounds === undefined || count(v.goal.maxRounds)) && optionalText(v.goal.reason))
     && Array.isArray(v.activity) && v.activity.every((x: any) => object(x) && count(x.at) && typeof x.type === 'string' && optionalText(x.detail))
+    && (v.humanDays === undefined || Array.isArray(v.humanDays) && v.humanDays.every((day: unknown) => typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day)))
     && usage(v.lifetime) && object(v.hours) && Object.entries(v.hours).every(([key, value]) => /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(key) && usage(value))
 }
 function ticket(v: any): boolean {

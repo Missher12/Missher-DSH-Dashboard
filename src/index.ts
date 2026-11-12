@@ -8,7 +8,7 @@ import type { IncomingMessage } from 'node:http'
 import { basename, isAbsolute, join, sep } from 'node:path'
 import { addUsage, calendar, foldSession, readTicket, statusOf, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from './fold.ts'
 import { loadCache, saveCache } from './cache.ts'
-import type { DashboardRow, FoldedSession, Snapshot, Ticket, Tokens } from './types.ts'
+import type { DashboardRow, FoldedSession, Snapshot, Ticket, Tokens, UsageHistory } from './types.ts'
 
 export const name = 'missher-dashboard'
 export const inject = ['agents', 'sessionPersistence', 'workspaceRegistry', 'webServer']
@@ -147,29 +147,45 @@ export class DashboardReader {
     const archived = new Set<string>(this.ctx.workspaceRegistry.archivedSessionIds)
     const tickets = new Map(this.tickets.filter(t => t.sessionId).map(t => [t.sessionId, t]))
     const rows: DashboardRow[] = []
+    const history = new Map<string, Omit<UsageHistory, 'humanDays'> & { humanDays: Set<string> | null }>()
     const projectOf = (id: string, cwd: string) => {
       const ws = workspaces.find(ws => ws.sessionIds.includes(id as SessionId)) ?? workspaces.find(ws => cwd === ws.path || cwd.startsWith(`${ws.path}${sep}`))
       return ws ? { projectId: String(ws.id), project: ws.title || basename(ws.path) } : { projectId: cwd || '__none', project: cwd ? basename(cwd) || cwd : '' }
     }
     const makeRow = (row: FoldedSession, ticket?: Ticket): DashboardRow => {
+      const { hours, lifetime, humanDays, ...facts } = row
+      const cwd = row.cwd || ticket?.directory || '', project = projectOf(row.id, cwd), isArchived = archived.has(row.id)
+      const kind = ticket || ['dsh-superagent-worker', 'dsh-superagent-router'].includes(row.agentPreset ?? '') ? 'superagent' : row.origin === 'subagent' ? 'subagent' : 'session'
+      const groupKey = Number(isArchived) + ':' + project.projectId
+      let group
+      if (kind !== 'superagent' && !this.failed.has(row.id)) {
+        group = history.get(groupKey) ?? { projectId: project.projectId, archived: isArchived, days: {} as Record<string, number>, hours: Array<number | null>(24).fill(null), longestMs: null, humanDays: new Set<string>() }
+        history.set(groupKey, group)
+        if (!humanDays) group.humanDays = null
+        else if (group.humanDays) for (const day of humanDays) group.humanDays.add(day)
+        if (lifetime.turns) group.longestMs = Math.max(group.longestMs ?? 0, lifetime.durationMs)
+      }
       const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
       const activeHours: string[] = [], hourlyTokens: Record<string, number> = {}
-      for (const [hour, value] of Object.entries(row.hours)) {
+      for (const [hour, value] of Object.entries(hours)) {
         const date = hour.slice(0, 10)
-        if (date < fromDate || date > today) continue
+        if (date > today) continue
+        const tokens = value.reported > 0 ? tokenTotal(value.tokens) : null
+        if (group && tokens !== null) {
+          group.days[date] = (group.days[date] ?? 0) + tokens
+          if (date === today) { const h = Number(hour.slice(11)); group.hours[h] = (group.hours[h] ?? 0) + tokens }
+        }
+        if (date < fromDate) continue
         activeHours.push(hour)
-        if (value.reported > 0) hourlyTokens[hour] = tokenTotal(value.tokens)
+        if (tokens !== null) hourlyTokens[hour] = tokens
         addUsage(usage, value)
         const key = days === 1 ? hour : date, bucket = series[key] ??= zeroTokens()
         for (const k of tokenKeys) bucket[k] += value.tokens[k]
         toolsSeries[key] = (toolsSeries[key] ?? 0) + value.toolCalls
       }
       const agent = this.ctx.agents.get(row.id as SessionId), running = agent?.status === 'running'
-      const { hours, lifetime, ...facts } = row
-      const cwd = row.cwd || ticket?.directory || ''
       return { ...facts, cwd, title: ticket?.title || row.title, updatedAt: Math.max(row.updatedAt, ticket?.updatedAt ?? 0),
-        ...projectOf(row.id, cwd), kind: ticket || ['dsh-superagent-worker', 'dsh-superagent-router'].includes(row.agentPreset ?? '') ? 'superagent' : row.origin === 'subagent' ? 'subagent' : 'session',
-        status: this.failed.has(row.id) && !agent ? 'unknown' : statusOf(row, running, ticket), running, live: !!agent, archived: archived.has(row.id), ticket,
+        ...project, kind, status: this.failed.has(row.id) && !agent ? 'unknown' : statusOf(row, running, ticket), running, live: !!agent, archived: isArchived, ticket,
         lifetimeTokens: tokenTotal(lifetime.tokens), usage, activeHours, hourlyTokens, series, toolsSeries,
         ...(this.failed.has(row.id) ? { unavailable: true } : {}) }
     }
@@ -184,7 +200,8 @@ export class DashboardReader {
     }
     return { generatedAt: this.updatedAt || now, cachedAt: this.cachedAt, cacheError: this.cacheError,
       timeZone: this.timeZone, today, fromDate, days, scanned: this.scanned, totalSessions: this.totalSessions,
-      failedSessions: this.failed.size, scanning: !!this.scan, superagent: this.superagent, rows, readError: this.readError }
+      failedSessions: this.failed.size, scanning: !!this.scan, superagent: this.superagent, rows, readError: this.readError,
+      usageHistory: [...history.values()].map(group => ({ ...group, humanDays: group.humanDays ? [...group.humanDays] : null })) }
   }
 }
 

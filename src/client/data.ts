@@ -8,7 +8,7 @@ const priority = (row: DashboardRow) => row.running ? 0 : attentionStates.has(ro
 /** Keep a complete view while the next scan is still replacing individual rows. */
 export function acceptSnapshot(previous: SnapshotData | null, next: SnapshotData): SnapshotData {
   if (previous?.days === next.days && previous.timeZone === next.timeZone && (previous.dataReady || previous.cachedAt) && next.scanning) {
-    return { ...next, rows: previous.rows, superagent: previous.superagent, failedSessions: previous.failedSessions,
+    return { ...next, rows: previous.rows, usageHistory: previous.usageHistory, superagent: previous.superagent, failedSessions: previous.failedSessions,
       generatedAt: previous.generatedAt, today: previous.today, fromDate: previous.fromDate, dataReady: true }
   }
   return { ...next, dataReady: !next.scanning || !!next.cachedAt }
@@ -34,28 +34,6 @@ export function activityCounts(rows: DashboardRow[]): Record<string, number> {
 }
 
 export const usedTokenKeys = (tokens: Tokens) => tokenKeys.filter(key => tokens[key] > 0)
-
-/** The keys are host-local hours. Null means no provider report; a reported zero stays zero. */
-export function tokenHeatmap(rows: DashboardRow[]) {
-  const cells = Array<number | null>(7 * 24).fill(null)
-  const weekdays = new Map<string, number>()
-  let total: number | null = null
-  for (const row of rows) {
-    if (row.unavailable || !row.usage.reported) continue
-    for (const [hour, tokens] of Object.entries(row.hourlyTokens ?? {})) {
-      const day = hour.slice(0, 10)
-      let weekday = weekdays.get(day)
-      if (weekday === undefined) {
-        weekday = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7
-        weekdays.set(day, weekday)
-      }
-      const cell = weekday * 24 + Number(hour.slice(11))
-      cells[cell] = (cells[cell] ?? 0) + tokens
-      total = (total ?? 0) + tokens
-    }
-  }
-  return { cells, total }
-}
 
 export const tokenBands = [0, 10_000, 100_000, 1_000_000, 10_000_000]
 export function tokenDistribution(rows: DashboardRow[]): number[] {

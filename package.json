@@ -1,6 +1,6 @@
 {
   "name": "@missher/dsh-dashboard",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "原生 DSH 工作仪表盘：会话状态、Token 图表、目标与清单进度",
   "private": true,
   "type": "module",

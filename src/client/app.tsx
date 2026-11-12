@@ -3,10 +3,11 @@ import { addUsage, calendar, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from
 import type { ReactNode } from 'react'
 import type { DashboardRow, Snapshot, Tokens } from '../types.ts'
 import { ProgressChart, RankingChart, StateChart, statusOrder, TokenChart, TokenMixChart, DistributionChart, Sparkline, MiniProgress } from './charts.tsx'
-import { acceptSnapshot, activityCounts, tokenHeatmap, usedTokenKeys, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
-import { UsageHeatmap, ActivityTrend, SessionDeck, StatusLabel } from './board.tsx'
+import { acceptSnapshot, activityCounts, usedTokenKeys, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
+import { ActivityTrend, SessionDeck, StatusLabel } from './board.tsx'
 import type { T, zh } from './locales.ts'
 import { numberFormat } from './numbers.ts'
+import { UsageStatistics } from './usage-stats.tsx'
 
 const rowTitle = (row: DashboardRow) => row.title || row.id
 const completedGoal = (row: DashboardRow) => row.ticket ? row.ticket.stage === 'ended' && ['completed', 'merged'].includes(row.ticket.outcome ?? '') : row.goal?.phase === 'complete'
@@ -86,11 +87,11 @@ export function App({ t, openSession }: AppProps) {
         <button className="dd-button" onClick={() => void refresh()} disabled={busy}>{t('refresh')}</button>
       </div>
     </header>
-    <SessionSection snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
+    <SessionSection refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
     <footer className="dd-footer"><details><summary>{t('statisticsNote')}</summary><p>{t('note')}</p></details></footer>
   </main>
 }
-function SessionSection({ snapshot, archived, t, openSession }: AppProps & { snapshot: Snapshot | null; archived: boolean }) {
+function SessionSection({ snapshot, archived, t, openSession, refresh, busy }: AppProps & { snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean }) {
   const [project, setProject] = useState(''), [status, setStatus] = useState<string>('all'), [search, setSearch] = useState(''), [rank, setRank] = useState<'session' | 'project'>('session')
   const [projectLabel, setProjectLabel] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null), [page, setPage] = useState(0), [error, setError] = useState('')
@@ -133,7 +134,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     }
     const superagentGoals = superagentRows.filter(row => row.goal || row.ticket)
     const superagent = { rows: superagentRows, usage: superagentUsage, series: superagentSeries, goals: superagentGoals, complete: superagentGoals.filter(completedGoal).length }
-    return { regular, scoped, projects, usage, series, toolsSeries, activity: activityCounts(scoped), activeSessions: scoped.filter(r => !r.unavailable && r.activeHours?.length).length, heat: tokenHeatmap(scoped), filtered, goals, complete, todos, done, superagent }
+    return { regular, scoped, projects, usage, series, toolsSeries, activity: activityCounts(scoped), activeSessions: scoped.filter(r => !r.unavailable && r.activeHours?.length).length, filtered, goals, complete, todos, done, superagent }
   }, [snapshot, project, archived, search, status, t])
   useLayoutEffect(() => { rowOrder.current = data.regular.map(row => row.id) }, [data.regular])
   const keys = useMemo(() => {
@@ -186,7 +187,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
         </div>} />
       <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
       <TokenChart series={data.series} keys={keys} tokens={data.usage.tokens} reported={data.usage.reported} t={t} />
-      <UsageHeatmap heat={data.heat} tokens={data.usage.tokens} t={t} />
+      <UsageStatistics history={snapshot?.usageHistory} today={snapshot?.today} zone={snapshot?.timeZone} project={project} archived={archived} t={t} refresh={refresh} busy={busy} />
     </div>
     <section className="dd-superagent" aria-labelledby="dd-superagent-title">
       <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{rangeLabel}</span></div>

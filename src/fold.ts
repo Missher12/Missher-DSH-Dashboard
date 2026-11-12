@@ -41,6 +41,7 @@ export function foldSession(header: Header, events: readonly LogEvent[], timeZon
   const samples = new Map<string, { at: number; tokens?: Tokens }>()
   const attempts = new Map<string, number>(), turns = new Map<number, number>()
   const approvals = new Set<string>(), tools = new Map<string, string>()
+  const humanDays = new Set<string>()
   let goalId: string | undefined
   const activity = (event: LogEvent, detail?: string) => {
     row.activity.push({ at: event.time, type: event.type, ...(detail ? { detail: detail.slice(0, 180) } : {}) })
@@ -55,6 +56,7 @@ export function foldSession(header: Header, events: readonly LogEvent[], timeZon
     if (event.seq < inheritedEventCount) continue
     row.updatedAt = Math.max(row.updatedAt, event.time)
     if (type === 'user/message' && d.source?.kind === 'user') {
+      humanDays.add(localHour(event.time).slice(0, 10))
       if (!row.title) row.title = (Array.isArray(d.content) ? d.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ') : '').slice(0, 100)
       activity(event)
     } else if (type === 'turn/start') {
@@ -98,6 +100,7 @@ export function foldSession(header: Header, events: readonly LogEvent[], timeZon
     for (const key of tokenKeys) usage.tokens[key] += sample.tokens[key]
   }
   for (const usage of Object.values(row.hours)) addUsage(row.lifetime, usage)
+  row.humanDays = [...humanDays]
   row.approvals = approvals.size; row.pendingTools = [...new Set(tools.values())]; row.activity.reverse()
   return row
 }

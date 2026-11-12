@@ -15,11 +15,11 @@ const session = (id: string, input: number): { header: { id: string; createdAt: 
     { seq: 1, time: at, type: 'assistant/message', data: { turn: 0, step: 0, usage: { inputTokens: input, outputTokens: 5 } } },
   ] satisfies LogEvent[],
 })
-function reader(dir: string, sessions: ReturnType<typeof session>[], gate = Promise.resolve()) {
+function reader(dir: string, sessions: ReturnType<typeof session>[], gate = Promise.resolve(), archivedSessionIds: string[] = []) {
   return new DashboardReader({
     get: (key: string) => key === 'profileContext' ? { dir } : undefined,
     agents: { list: () => [], get: () => undefined },
-    workspaceRegistry: { list: () => [], archivedSessionIds: [] }, webServer: { port: 0 },
+    workspaceRegistry: { list: () => [], archivedSessionIds }, webServer: { port: 0 },
     sessionPersistence: {
       list: async () => { await gate; return sessions },
       open: async (id: string) => {
@@ -47,8 +47,13 @@ test('restart displays saved statistics before scanning, then replaces changed a
   try {
     assert.equal((await settled(first)).rows.length, 2)
     await first.dispose()
+    const file = join(dir, '.dsh-dashboard', 'cache-v1.json'), old = JSON.parse(await readFile(file, 'utf8'))
+    for (const row of old.rows) delete row.humanDays // 0.3.2 cache has the Token data but no chat-day evidence.
+    await writeFile(file, JSON.stringify(old))
     reopened = reader(dir, [session('kept', 90)], gate)
     const cached = await reopened.snapshot(7)
+    assert.equal(cached.usageHistory[0].humanDays, null)
+    assert.equal(cached.usageHistory[0].days[cached.today], 60)
     assert.equal(cached.rows.length, 2, 'saved rows must be visible before slow history listing finishes')
     assert.equal(cached.rows.find(row => row.id === 'kept')?.usage.tokens.uncachedInput, 30)
     assert.deepEqual(Object.values(cached.rows.find(row => row.id === 'kept')!.hourlyTokens), [35], 'hourly usage is available directly from the existing cache')
@@ -60,6 +65,8 @@ test('restart displays saved statistics before scanning, then replaces changed a
     assert.deepEqual(fresh.rows.map(row => row.id), ['kept'])
     assert.equal(fresh.rows[0].usage.tokens.uncachedInput, 90, 'revisions from a previous host must not bypass validation')
     assert.deepEqual(Object.values(fresh.rows[0].hourlyTokens), [95])
+    assert.deepEqual(fresh.usageHistory[0].humanDays, [])
+    assert.equal(fresh.usageHistory[0].days[fresh.today], 95)
     assert.equal(fresh.cachedAt, undefined)
   } finally {
     release(); await first.dispose(); await reopened?.dispose()
@@ -85,6 +92,27 @@ test('the snapshot preserves the reported hour before collapsing the trend into 
     assert.deepEqual(row.hourlyTokens, { [hour(stamp(4))]: 35, [hour(stamp(3))]: 0 })
     assert.ok(row.activeHours.includes(hour(stamp(1))), 'an unreported request is still activity, not billed tokens')
   } finally { await current.dispose(); await rm(dir, { recursive: true, force: true }) }
+})
+
+test('history survives the page date range, excludes SuperAgent and groups archive and project independently', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-dashboard-'))
+  const old = session('old', 41), archived = session('archived', 15), worker = session('worker', 1000), current = session('current', 4)
+  const stamp = at - 500 * 86400000, hour = calendar(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  Object.assign(old.header, {createdAt:stamp-1,cwd:'/one'}); Object.assign(archived.header, {cwd:'/one'}); Object.assign(worker.header,{agentPreset:'dsh-superagent-worker'})
+  old.events.forEach(e=>{e.time=stamp});old.events.push({seq:2,time:stamp,type:'user/message',data:{source:{kind:'user'}}},
+    {seq:3,time:at,type:'user/message',data:{source:{kind:'goal'}}})
+  const host = reader(dir,[old,archived,worker,current],Promise.resolve(),['archived'])
+  try {
+    const snapshot = await settled(host), cut = await host.snapshot(1)
+    const select = (projectId:string,archived:boolean)=>cut.usageHistory.find(g=>g.projectId===projectId&&g.archived===archived)!
+    assert.equal(cut.rows.find(r=>r.id==='old')?.usage.reported,0)
+    assert.deepEqual(select('/one',false).days,{[hour(stamp).slice(0,10)]:46})
+    assert.deepEqual(select('/one',false).humanDays,[hour(stamp).slice(0,10)])
+    assert.equal(select('/one',true).days[cut.today],20)
+    assert.equal(select('__none',false).days[cut.today],9)
+    assert.equal(select('__none',false).hours[Number(hour(at).slice(11))],9)
+    assert.deepEqual(snapshot.usageHistory,cut.usageHistory)
+  } finally { await host.dispose(); await rm(dir,{recursive:true,force:true}) }
 })
 
 test('damaged or incompatible cache falls back to history and repairs the saved result', async () => {

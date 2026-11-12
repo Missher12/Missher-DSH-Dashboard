@@ -1,10 +1,9 @@
-import { Fragment, useLayoutEffect, useState } from 'react'
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
-import type { DashboardRow, Tokens } from '../types.ts'
+import { useLayoutEffect, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import type { DashboardRow } from '../types.ts'
 import { CountChart, MetricNumber, statusColors } from './charts.tsx'
 import { tokenTotal } from '../fold.ts'
 import { numberFormat } from './numbers.ts'
-import { usedTokenKeys, type tokenHeatmap } from './data.ts'
 import type { T } from './locales.ts'
 
 export function StatusLabel({ row, t }: { row: DashboardRow; t: T }) {
@@ -66,56 +65,5 @@ export function ActivityTrend({ tools, active, toolsTotal, activeTotal, keys, t 
       </div>
     </div>
     <CountChart series={showTools ? tools : active} keys={keys} label={label} unit={unit} t={t} />
-  </section>
-}
-
-export function UsageHeatmap({ heat, tokens, t }: {
-  heat: ReturnType<typeof tokenHeatmap>; tokens: Tokens; t: T
-}) {
-  const { exact, compact } = numberFormat(t('numberLocale'))
-  const weekdays = t('weekdayNames').split('|')
-  const [focused, setFocused] = useState(0)
-  const [reading, setReading] = useState<number | null>(null)
-  const peak = Math.max(0, ...heat.cells.map(value => value ?? 0))
-  const describe = (index: number) => {
-    const value = heat.cells[index]
-    return weekdays[Math.floor(index / 24)] + ' ' + String(index % 24).padStart(2, '0') + ':00 · ' + (value === null ? t('noUsage') : exact(value) + ' Token')
-  }
-  const move = (event: KeyboardEvent<HTMLButtonElement>, cell: number) => {
-    const rowStart = Math.floor(cell / 24) * 24
-    let next: number
-    switch (event.key) {
-      case 'ArrowLeft': next = Math.max(rowStart, cell - 1); break
-      case 'ArrowRight': next = Math.min(rowStart + 23, cell + 1); break
-      case 'ArrowUp': next = Math.max(cell % 24, cell - 24); break
-      case 'ArrowDown': next = Math.min(144 + cell % 24, cell + 24); break
-      case 'Home': next = rowStart; break
-      case 'End': next = rowStart + 23; break
-      default: return
-    }
-    event.preventDefault()
-    event.currentTarget.closest('.dd-heat-grid')?.querySelector<HTMLButtonElement>('[data-cell="' + next + '"]')?.focus({ preventScroll: true })
-  }
-  return <section className="dd-feature dd-heat-card" aria-labelledby="dd-heat-title">
-    <div className="dd-card-head"><div><h2 id="dd-heat-title" title={t('heatHint')}>{t('heatTitle')}</h2>
-      <MetricNumber value={heat.total} unit="Token" t={t} /></div>
-    </div>
-    <dl className="dd-heat-facts">{usedTokenKeys(tokens).map(key =>
-      <div key={key}><dt>{t(key)}</dt><dd title={exact(tokens[key]) + ' Token'}>{compact(tokens[key])}</dd></div>)}</dl>
-    <div className="dd-heat-grid" role="group" aria-label={t('heatHint')} onMouseLeave={() => setReading(null)}>
-      {weekdays.map((name, day) => <Fragment key={name}>
-        <span className="dd-heat-day">{name}</span>
-        {heat.cells.slice(day * 24, day * 24 + 24).map((count, hour) => {
-          const cell = day * 24 + hour
-          const level = count === null ? 'missing' : count === 0 ? 0 : Math.ceil(Math.sqrt(count / peak) * 4)
-          return <button key={cell} type="button" className={'dd-heat-cell dd-heat-' + level} data-cell={cell}
-            aria-label={describe(cell)} title={describe(cell)} tabIndex={cell === focused ? 0 : -1}
-            onFocus={() => { setFocused(cell); setReading(cell) }} onBlur={() => setReading(null)}
-            onMouseEnter={() => setReading(cell)} onClick={() => setReading(cell)} onKeyDown={event => move(event, cell)} />
-        })}
-      </Fragment>)}
-      {[0, 6, 12, 18, 23].map(hour => <span key={hour} className="dd-heat-hour" style={{ gridColumn: hour + 2 }}>{String(hour).padStart(2, '0')}</span>)}
-    </div>
-    <div className="dd-heat-foot"><span>{reading !== null ? describe(reading) : peak ? t('peak') + ' · ' + describe(heat.cells.indexOf(peak)) : heat.total === null ? t('noUsage') : '0 Token'}</span><span className="dd-heat-scale" aria-hidden="true">{t('less')}{[0,1,2,3,4].map(n => <i key={n} className={'dd-heat-' + n} />)}{t('more')}</span></div>
   </section>
 }

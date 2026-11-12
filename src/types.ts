@@ -31,12 +31,13 @@ export interface FoldedSession {
   activity: Activity[]
   lifetime: Usage
   hours: Record<string, Usage>
+  humanDays?: string[] // Absent in caches written before 0.3.3.
 }
 export interface Ticket {
   id: string; sessionId: string; title: string; directory: string; updatedAt: number
   stage: string; action?: string; outcome?: string; summary: string
 }
-export interface DashboardRow extends Omit<FoldedSession, 'hours' | 'lifetime'> {
+export interface DashboardRow extends Omit<FoldedSession, 'hours' | 'lifetime' | 'humanDays'> {
   status: Status
   running: boolean
   live: boolean
@@ -53,6 +54,14 @@ export interface DashboardRow extends Omit<FoldedSession, 'hours' | 'lifetime'> 
   toolsSeries: Record<string, number>
   unavailable?: boolean
 }
+export interface UsageHistory {
+  projectId: string
+  archived: boolean
+  days: Record<string, number>
+  hours: (number | null)[]
+  humanDays: string[] | null
+  longestMs: number | null
+}
 export interface Snapshot {
   generatedAt: number
   cachedAt?: number
@@ -67,4 +76,5 @@ export interface Snapshot {
   scanning: boolean
   superagent: 'available' | 'unavailable' | 'partial'
   rows: DashboardRow[]
+  usageHistory: UsageHistory[]
 }

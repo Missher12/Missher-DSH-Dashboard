@@ -1,20 +1,22 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { acceptSnapshot, activityCounts, tokenHeatmap, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
+import { acceptSnapshot, activityCounts, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
 import { foldSession, zeroUsage } from '../src/fold.ts'
 import { axisMaximum, numberFormat } from '../src/client/numbers.ts'
-import type { DashboardRow, Snapshot } from '../src/types.ts'
+import { particles, usageModel } from '../src/client/usage-model.ts'
+import type { DashboardRow, Snapshot, UsageHistory } from '../src/types.ts'
 
 function row(id: string, tokens = 100, updatedAt = 100): DashboardRow {
   const usage = zeroUsage(); usage.reported = 1; usage.tokens.uncachedInput = tokens
   return { ...foldSession({ id, createdAt: 1 }, [], 'UTC'), updatedAt, title: id, status: 'idle', running: false, live: false, archived: false,
     project: 'Project', projectId: 'p', kind: 'session', lifetimeTokens: tokens, usage, activeHours: [], hourlyTokens: {}, series: { '2026-11-10': { ...usage.tokens } }, toolsSeries: {} }
 }
-const snapshot = (rows: DashboardRow[], scanning = false): Snapshot => ({ days: 7, generatedAt: 100, timeZone: 'UTC', today: '2026-11-10', fromDate: '2026-11-04', scanned: 0, totalSessions: rows.length, failedSessions: 0, scanning, superagent: 'available', rows })
+const snapshot = (rows: DashboardRow[], scanning = false): Snapshot => ({ days: 7, generatedAt: 100, timeZone: 'UTC', today: '2026-11-10', fromDate: '2026-11-04', scanned: 0, totalSessions: rows.length, failedSessions: 0, scanning, superagent: 'available', usageHistory: [], rows })
 
 test('background batches keep the complete charts until a finished update arrives', () => {
   const saved = acceptSnapshot(null, { ...snapshot([row('a'), row('b')], true), cachedAt: 90 })
   const partial = acceptSnapshot(saved, snapshot([row('a', 200)], true))
+  assert.strictEqual(partial.usageHistory, saved.usageHistory)
   const again = acceptSnapshot(partial, snapshot([row('a', 300)], true))
   assert.deepEqual(again.rows.map(r => r.usage.tokens.uncachedInput), [100, 100])
   const complete = acceptSnapshot(again, snapshot([row('a', 300)]))
@@ -40,18 +42,27 @@ test('activity counts distinct sessions per bucket and token bands use valid rec
   assert.deepEqual(tokenDistribution([...rows, missing, { ...row('unreadable'), unavailable: true }]), [2, 1, 1, 1, 1])
 })
 
-test('hourly usage adds tokens across sessions and weeks, with a distinct reported zero', () => {
-  const first = { ...row('a'), hourlyTokens: { '2026-11-02T00': 110, '2026-11-09T00': 17, '2026-11-08T23': 0 } }
-  const second = { ...row('b'), hourlyTokens: { '2026-11-09T00': 5, '2026-11-09T01': 1000 } }
-  const missing = row('missing'); missing.usage.reported = 0; missing.activeHours = ['2026-11-09T02']
-  const heat = tokenHeatmap([first, second, missing, { ...second, unavailable: true }])
-  assert.equal(heat.cells[0], 132)
-  assert.equal(heat.cells[1], 1000)
-  assert.equal(heat.cells[167], 0, 'provider reported zero on Sunday at 23:00')
-  assert.equal(heat.cells[2], null, 'activity without reported usage must not become zero tokens')
-  assert.equal(heat.total, 1132)
-  assert.equal(tokenHeatmap([missing]).total, null)
-  assert.equal(tokenHeatmap([{ ...first, hourlyTokens: { '2026-11-08T23': 0 } }]).total, 0)
+test('usage statistics merge matching project histories, retain known zeroes, and count actual chat streaks', () => {
+  const today = '2026-11-12', blankHours = () => Array<number | null>(24).fill(null)
+  const base: UsageHistory = { projectId:'a', archived:false, days:{'2025-05-01':500,'2026-11-09':0,'2026-11-10':10,'2026-11-12':25},
+    hours:blankHours(), humanDays:['2026-11-09','2026-11-10','2026-11-11'], longestMs:180000 }
+  base.hours[3]=25; base.hours[5]=0
+  const archive = {...base, archived:true, days:{'2026-11-12':100}, hours:blankHours(), humanDays:[today]}
+  const other = {...base, projectId:'b', days:{'2026-11-12':3}, hours:blankHours(), humanDays:[], longestMs:360000}
+  const primary = usageModel([base,archive,other],today,'a',false)
+  assert.deepEqual([primary.total,primary.peak,primary.baseline,primary.hours[3],primary.hours[4],primary.hours[5],primary.current,primary.longest,primary.longestMs], [535,500,500,25,null,0,3,3,180000])
+  assert.equal(usageModel([base,archive,other],today,'',true).total,638)
+  assert.equal(usageModel([base,archive],today,'a',true).current,4)
+  assert.equal(usageModel([base,{...other,humanDays:null}],today,'',false).current,null)
+  assert.equal(usageModel([],today,'',false).total,null)
+  const daily=particles(primary,'daily'), weekly=particles(primary,'weekly'), cumulative=particles(primary,'cumulative')
+  assert.equal(daily.length,371); assert.equal(new Date(daily[0].date+'T00:00Z').getUTCDay(),0)
+  assert.deepEqual(daily.map(c=>c.date),weekly.map(c=>c.date))
+  assert.equal(daily.find(c=>c.date==='2026-11-09')?.value,0)
+  assert.equal(daily.find(c=>c.date==='2026-11-11')?.value,null)
+  assert.equal(weekly.find(c=>c.date==='2026-11-11')?.value,35)
+  assert.equal(cumulative[0].value,500)
+  assert.equal(cumulative.at(-1)?.value,535);assert.equal(cumulative.at(-1)?.to,today)
 })
 
 test('dashboard figures use the UI language and rounded axes without clipping the peak', () => {
