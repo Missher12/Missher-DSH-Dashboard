@@ -3,8 +3,8 @@ import { addUsage, calendar, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from
 import type { ReactNode } from 'react'
 import type { DashboardRow, Snapshot, Tokens } from '../types.ts'
 import { ProgressChart, RankingChart, StateChart, statusOrder, TokenChart, TokenMixChart, DistributionChart, Sparkline, MiniProgress } from './charts.tsx'
-import { acceptSnapshot, activityCounts, activityHeatmap, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
-import { ActivityHeatmap, ActivityTrend, SessionDeck, StatusLabel } from './board.tsx'
+import { acceptSnapshot, activityCounts, tokenHeatmap, usedTokenKeys, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
+import { UsageHeatmap, ActivityTrend, SessionDeck, StatusLabel } from './board.tsx'
 import type { T, zh } from './locales.ts'
 import { numberFormat } from './numbers.ts'
 
@@ -114,6 +114,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     const projects = new Map(regular.map(row => [row.projectId, row.project || t('noProject')]))
     const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
     for (const row of scoped) {
+      if (row.unavailable) continue
       addUsage(usage, row.usage)
       for (const [key, tokens] of Object.entries(row.series)) { const bucket = series[key] ??= zeroTokens(); for (const k of tokenKeys) bucket[k] += tokens[k] }
       for (const [key, count] of Object.entries(row.toolsSeries)) toolsSeries[key] = (toolsSeries[key] ?? 0) + count
@@ -126,12 +127,13 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     const todos = scoped.flatMap(row => row.todos ?? []), done = todos.filter(todo => todo.status === 'completed').length
     const superagentRows = rows.filter(row => row.kind === 'superagent'), superagentUsage = zeroUsage(), superagentSeries: Record<string, number> = {}
     for (const row of superagentRows) {
+      if (row.unavailable) continue
       addUsage(superagentUsage, row.usage)
       for (const [key, tokens] of Object.entries(row.series)) superagentSeries[key] = (superagentSeries[key] ?? 0) + tokenTotal(tokens)
     }
     const superagentGoals = superagentRows.filter(row => row.goal || row.ticket)
     const superagent = { rows: superagentRows, usage: superagentUsage, series: superagentSeries, goals: superagentGoals, complete: superagentGoals.filter(completedGoal).length }
-    return { regular, scoped, projects, usage, series, toolsSeries, activity: activityCounts(scoped), heat: activityHeatmap(scoped), filtered, goals, complete, todos, done, superagent }
+    return { regular, scoped, projects, usage, series, toolsSeries, activity: activityCounts(scoped), activeSessions: scoped.filter(r => !r.unavailable && r.activeHours?.length).length, heat: tokenHeatmap(scoped), filtered, goals, complete, todos, done, superagent }
   }, [snapshot, project, archived, search, status, t])
   useLayoutEffect(() => { rowOrder.current = data.regular.map(row => row.id) }, [data.regular])
   const keys = useMemo(() => {
@@ -139,7 +141,6 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     if (actualDays === 1) return Array.from({ length: 24 }, (_, i) => `${snapshot.today}T${String(i).padStart(2, '0')}`)
     return Array.from({ length: actualDays }, (_, i) => new Date(Date.parse(`${snapshot.fromDate}T12:00:00Z`) + i * 86400000).toISOString().slice(0, 10))
   }, [snapshot?.today, snapshot?.fromDate, actualDays])
-  const input = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
   const selectSession = (id: string) => { setStatus('all'); setSearch(''); setExpanded(id); const index = data.scoped.findIndex(r => r.id === id); setPage(Math.max(0, Math.floor(index / PAGE_SIZE))); setScrollTarget({ id }) }
   const selectStatus = (value: string, reveal = true) => { setStatus(value); resetList(); if (reveal) setScrollTarget({}) }
   const pageCount = Math.max(1, Math.ceil(data.filtered.length / PAGE_SIZE)), currentPage = Math.min(page, pageCount - 1)
@@ -162,7 +163,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
   const changePage = (value: number) => { setPage(value); setExpanded(null) }
   const go = async (id: string) => { try { await openSession(id) } catch { setError('openError') } }
   const rangeLabel = t(actualDays === 1 ? 'today' : actualDays === 7 ? 'week' : 'month')
-  const { compact, exact, percent } = numberFormat(t('numberLocale'))
+  const { compact, exact } = numberFormat(t('numberLocale'))
   const title = t('regularSessions'), superagent = data.superagent
   const superagentReady = snapshot && snapshot.superagent !== 'unavailable'
   return <div className="dd-overview">
@@ -177,18 +178,18 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
       <SessionDeck key={JSON.stringify([project, actualDays, archived])} rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t}
         projectControl={<div className="dd-controls">
           <label className="dd-visually-hidden" htmlFor="dd-project">{title} · {t('project')}</label>
-          <select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}>
+          <span className="dd-select"><select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}>
             <option value="">{t('allProjects')}</option>
             {project && !data.projects.has(project) && <option value={project}>{projectLabel || project}</option>}
             {[...data.projects].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </select>
+          </select></span>
         </div>} />
-      <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.heat.sessions} t={t} />
-      <TokenChart series={data.series} keys={keys} reported={data.usage.reported} t={t} />
-      <ActivityHeatmap heat={data.heat} turns={data.usage.turns} ready={!!snapshot} hitRate={input ? percent(data.usage.tokens.cacheRead / input) : '—'} t={t} />
+      <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
+      <TokenChart series={data.series} keys={keys} tokens={data.usage.tokens} reported={data.usage.reported} t={t} />
+      <UsageHeatmap heat={data.heat} tokens={data.usage.tokens} t={t} />
     </div>
     <section className="dd-superagent" aria-labelledby="dd-superagent-title">
-      <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{t('allProjects')} · {rangeLabel}</span></div>
+      <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{rangeLabel}</span></div>
       <div className="dd-superagent-cards">
         <Summary tone="running" label={t('running')} value={superagentReady ? String(superagent.rows.filter(row => row.running).length) : '—'} hint={t('liveNow')} />
         <Summary tone="attention" label={t('needAttention')} value={superagentReady ? String(superagent.rows.filter(row => attentionStates.has(row.status)).length) : '—'} hint={t('liveNow')} />
@@ -199,12 +200,12 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
     </section>
     <div className="dd-chart-grid">
       <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><div className="dd-chart-body"><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><div className="dd-chart-body"><TokenMixChart tokens={data.usage.tokens} t={t} /></div></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><div className="dd-chart-body"><TokenMixChart tokens={data.usage.tokens} reported={data.usage.reported} t={t} /></div></section>
       <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartDistributionHint')}>{t('chartDistribution')}</h3></div><div className="dd-chart-body"><DistributionChart rows={data.scoped} t={t} /></div></section>
       <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><div className="dd-chart-body"><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></div></section>
       <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><div className="dd-chart-body"><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></div></section>
     </div>
-    <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></div></div>
+    <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><span className="dd-select"><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></span></div></div>
       <div ref={list} className="dd-table-scroll dd-session-list" style={{ minHeight: listHeight }}><table className="dd-session-table"><thead><tr><th>{t('session')}</th><th>{t('status')}</th><th>{t('progress')}</th><th>{t('tokens')}</th><th>{t('toolCalls')}</th><th>{t('updated')}</th></tr></thead><tbody>
         {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={row.unavailable || !row.usage.reported ? t('noUsage') : exact(tokenTotal(row.usage.tokens)) + ' Token'}>{row.unavailable || !row.usage.reported ? '—' : compact(tokenTotal(row.usage.tokens))}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
           {expanded === row.id && <tr id={`dd-detail-${row.id}`}><td colSpan={6}><div className="dd-detail">
@@ -214,7 +215,7 @@ function SessionSection({ snapshot, archived, t, openSession }: AppProps & { sna
             <div className="dd-detail-grid"><div><h4>{t('goal')}</h4>{row.goal ? <><p className="dd-objective">{row.goal.objective}</p><p className="dd-caption">{t(row.goal.phase)} · {t('rounds')} {row.goal.rounds} / {row.goal.maxRounds}</p>{row.goal.reason && <p className="dd-error">{row.goal.reason}</p>}</> : <p className="dd-caption">{t('noGoal')}</p>}
               <h4>{t('checklist')}</h4>{row.todos?.length ? <ul className="dd-todos">{row.todos.map((todo, i) => <li key={i}><span className={`dd-todo-icon dd-todo-${todo.status}`} aria-label={todo.status === 'completed' ? t('complete') : t(todo.status)}>{todo.status === 'completed' ? '✓' : todo.status === 'in_progress' ? '◐' : '○'}</span>{todo.content}</li>)}</ul> : <p className="dd-caption">{t('noChecklist')}</p>}
               {row.ticket?.summary && <><h4>{t('taskSummary')}</h4><p className="dd-objective">{row.ticket.summary}</p></>}
-            </div><div><h4>{t('tokens')} · {rangeLabel}</h4><dl className="dd-token-details">{tokenKeys.map(key => <div key={key}><dt>{t(key)}</dt><dd>{row.unavailable || !row.usage.reported ? '—' : exact(row.usage.tokens[key])}</dd></div>)}</dl>
+            </div><div><h4>{t('tokens')} · {rangeLabel}</h4>{row.unavailable || !row.usage.reported ? <p className="dd-caption">{t('noUsage')}</p> : tokenTotal(row.usage.tokens) === 0 ? <p>0 Token</p> : <dl className="dd-token-details">{usedTokenKeys(row.usage.tokens).map(key => <div key={key}><dt>{t(key)}</dt><dd>{exact(row.usage.tokens[key])}</dd></div>)}</dl>}
               <h4>{t('latestActivity')}</h4>{row.running && row.pendingTools.length > 0 && <p className="dd-caption">{t('toolsRunning')} · {row.pendingTools.join(', ')}</p>}<ul className="dd-activity">{row.activity.map((item, i) => <li key={i}><time>{date(item.at, snapshot?.timeZone)}</time><span>{t(`event.${item.type}` as keyof typeof zh)}{item.detail && <small> · {item.detail}</small>}</span></li>)}</ul>{!row.activity.length && <p className="dd-caption">{t('noActivity')}</p>}
             </div></div>
           </div></td></tr>}

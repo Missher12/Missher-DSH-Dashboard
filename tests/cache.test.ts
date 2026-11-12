@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { DashboardReader } from '../src/index.ts'
-import type { LogEvent } from '../src/fold.ts'
+import { calendar, type LogEvent } from '../src/fold.ts'
 
 const at = Date.now()
-const session = (id: string, input: number) => ({
+const session = (id: string, input: number): { header: { id: string; createdAt: number }; revision: string; events: LogEvent[] } => ({
   header: { id, createdAt: at - 1000 }, revision: 'same-token-in-different-hosts',
   events: [
     { seq: 0, time: at, type: 'session/title', data: { title: id } },
@@ -51,6 +51,7 @@ test('restart displays saved statistics before scanning, then replaces changed a
     const cached = await reopened.snapshot(7)
     assert.equal(cached.rows.length, 2, 'saved rows must be visible before slow history listing finishes')
     assert.equal(cached.rows.find(row => row.id === 'kept')?.usage.tokens.uncachedInput, 30)
+    assert.deepEqual(Object.values(cached.rows.find(row => row.id === 'kept')!.hourlyTokens), [35], 'hourly usage is available directly from the existing cache')
     assert.equal(cached.scanning, true)
     assert.equal(cached.cachedAt, cached.generatedAt)
     assert.ok(cached.cachedAt)
@@ -58,11 +59,32 @@ test('restart displays saved statistics before scanning, then replaces changed a
     const fresh = await settled(reopened)
     assert.deepEqual(fresh.rows.map(row => row.id), ['kept'])
     assert.equal(fresh.rows[0].usage.tokens.uncachedInput, 90, 'revisions from a previous host must not bypass validation')
+    assert.deepEqual(Object.values(fresh.rows[0].hourlyTokens), [95])
     assert.equal(fresh.cachedAt, undefined)
   } finally {
     release(); await first.dispose(); await reopened?.dispose()
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('the snapshot preserves the reported hour before collapsing the trend into daily totals', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-dashboard-'))
+  const item = session('hourly', 1), hour = calendar(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const stamp = (offset: number) => at - offset * 3_600_000
+  item.events = [4, 3, 2, 1].map((offset, turn) => ({
+    seq: turn, time: stamp(offset), type: 'assistant/message', data: { turn, step: 0, usage: [
+      { inputTokens: 10, cacheReadTokens: 20, cacheWriteTokens: 3, outputTokens: 2 },
+      { inputTokens: 0, outputTokens: 0 }, undefined, { inputTokens: -1, outputTokens: 2 },
+    ][turn] },
+  }))
+  const current = reader(dir, [item])
+  try {
+    const [row] = (await settled(current)).rows
+    assert.equal(row.usage.reported, 2)
+    assert.equal(row.usage.missing, 2)
+    assert.deepEqual(row.hourlyTokens, { [hour(stamp(4))]: 35, [hour(stamp(3))]: 0 })
+    assert.ok(row.activeHours.includes(hour(stamp(1))), 'an unreported request is still activity, not billed tokens')
+  } finally { await current.dispose(); await rm(dir, { recursive: true, force: true }) }
 })
 
 test('damaged or incompatible cache falls back to history and repairs the saved result', async () => {

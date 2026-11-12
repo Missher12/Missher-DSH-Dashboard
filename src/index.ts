@@ -153,11 +153,12 @@ export class DashboardReader {
     }
     const makeRow = (row: FoldedSession, ticket?: Ticket): DashboardRow => {
       const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
-      const activeHours: string[] = []
+      const activeHours: string[] = [], hourlyTokens: Record<string, number> = {}
       for (const [hour, value] of Object.entries(row.hours)) {
         const date = hour.slice(0, 10)
         if (date < fromDate || date > today) continue
         activeHours.push(hour)
+        if (value.reported > 0) hourlyTokens[hour] = tokenTotal(value.tokens)
         addUsage(usage, value)
         const key = days === 1 ? hour : date, bucket = series[key] ??= zeroTokens()
         for (const k of tokenKeys) bucket[k] += value.tokens[k]
@@ -169,7 +170,7 @@ export class DashboardReader {
       return { ...facts, cwd, title: ticket?.title || row.title, updatedAt: Math.max(row.updatedAt, ticket?.updatedAt ?? 0),
         ...projectOf(row.id, cwd), kind: ticket || ['dsh-superagent-worker', 'dsh-superagent-router'].includes(row.agentPreset ?? '') ? 'superagent' : row.origin === 'subagent' ? 'subagent' : 'session',
         status: this.failed.has(row.id) && !agent ? 'unknown' : statusOf(row, running, ticket), running, live: !!agent, archived: archived.has(row.id), ticket,
-        lifetimeTokens: tokenTotal(lifetime.tokens), usage, activeHours, series, toolsSeries,
+        lifetimeTokens: tokenTotal(lifetime.tokens), usage, activeHours, hourlyTokens, series, toolsSeries,
         ...(this.failed.has(row.id) ? { unavailable: true } : {}) }
     }
     for (const { row } of this.cache.values()) rows.push(makeRow(row, tickets.get(row.id)))

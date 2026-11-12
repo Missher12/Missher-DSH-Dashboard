@@ -1,5 +1,5 @@
-import type { DashboardRow, Snapshot, Status } from '../types.ts'
-import { tokenTotal } from '../fold.ts'
+import type { DashboardRow, Snapshot, Status, Tokens } from '../types.ts'
+import { tokenKeys, tokenTotal } from '../fold.ts'
 
 export type SnapshotData = Snapshot & { readError?: boolean; dataReady?: boolean }
 export const attentionStates = new Set<Status>(['approval', 'attention', 'blocked', 'error', 'unknown'])
@@ -33,29 +33,28 @@ export function activityCounts(rows: DashboardRow[]): Record<string, number> {
   return counts
 }
 
-/** Hours already use the host time zone. A session counts once per weekday/hour cell across the selected period. */
-export function activityHeatmap(rows: DashboardRow[]) {
-  const cells = Array<number>(7 * 24).fill(0)
-  const dates = new Map<string, number>()
-  const hours = new Set<string>()
-  let sessions = 0
+export const usedTokenKeys = (tokens: Tokens) => tokenKeys.filter(key => tokens[key] > 0)
+
+/** The keys are host-local hours. Null means no provider report; a reported zero stays zero. */
+export function tokenHeatmap(rows: DashboardRow[]) {
+  const cells = Array<number | null>(7 * 24).fill(null)
+  const weekdays = new Map<string, number>()
+  let total: number | null = null
   for (const row of rows) {
-    if (row.unavailable || !row.activeHours?.length) continue
-    sessions++
-    const visited = new Set<number>()
-    for (const hour of row.activeHours) {
-      hours.add(hour)
+    if (row.unavailable || !row.usage.reported) continue
+    for (const [hour, tokens] of Object.entries(row.hourlyTokens ?? {})) {
       const day = hour.slice(0, 10)
-      let weekday = dates.get(day)
+      let weekday = weekdays.get(day)
       if (weekday === undefined) {
         weekday = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7
-        dates.set(day, weekday)
+        weekdays.set(day, weekday)
       }
-      visited.add(weekday * 24 + Number(hour.slice(11)))
+      const cell = weekday * 24 + Number(hour.slice(11))
+      cells[cell] = (cells[cell] ?? 0) + tokens
+      total = (total ?? 0) + tokens
     }
-    for (const cell of visited) cells[cell]++
   }
-  return { cells, sessions, days: dates.size, hours: hours.size }
+  return { cells, total }
 }
 
 export const tokenBands = [0, 10_000, 100_000, 1_000_000, 10_000_000]

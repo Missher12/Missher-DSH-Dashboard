@@ -1,8 +1,8 @@
 import { useId, useState, type ReactNode } from 'react'
-import { tokenKeys, tokenTotal, zeroTokens } from '../fold.ts'
+import { tokenTotal, zeroTokens } from '../fold.ts'
 import type { DashboardRow, Status, Tokens } from '../types.ts'
 import type { T } from './locales.ts'
-import { tokenBands, tokenDistribution } from './data.ts'
+import { tokenBands, tokenDistribution, usedTokenKeys } from './data.ts'
 import { axisMaximum, numberFormat } from './numbers.ts'
 
 export function MetricNumber({ value, unit, t }: { value: number | null; unit: string; t: T }) {
@@ -32,15 +32,16 @@ export function MiniProgress({ value, total }: { value: number; total: number })
   </span>
 }
 
-export function TokenMixChart({ tokens, t }: { tokens: Tokens; t: T }) {
+export function TokenMixChart({ tokens, reported, t }: { tokens: Tokens; reported: number; t: T }) {
   const { compact, exact, percent } = numberFormat(t('numberLocale'))
   const total = tokenTotal(tokens)
-  if (!total) return <Empty t={t} />
+  if (!total) return <div className="dd-empty">{reported ? '0 Token' : t('noUsage')}</div>
+  const used = usedTokenKeys(tokens)
   return <div className="dd-token-mix">
-    <div className="dd-mix-bar" role="img" aria-label={tokenKeys.map(key => `${t(key)} ${exact(tokens[key])}`).join(' · ')}>
-      {tokenKeys.map(key => <span key={key} style={{ width: `${tokens[key] / total * 100}%`, background: tokenColors[key] }} title={`${t(key)} ${exact(tokens[key])}`} />)}
+    <div className="dd-mix-bar" role="img" aria-label={used.map(key => `${t(key)} ${exact(tokens[key])}`).join(' · ')}>
+      {used.map(key => <span key={key} style={{ width: `${tokens[key] / total * 100}%`, background: tokenColors[key] }} title={`${t(key)} ${exact(tokens[key])}`} />)}
     </div>
-    <div className="dd-mix-legend">{tokenKeys.map(key => <div key={key} title={exact(tokens[key])}><span><i style={{ background: tokenColors[key] }} />{t(key)}</span><strong>{compact(tokens[key])}</strong><small>{percent(tokens[key] / total)}</small></div>)}</div>
+    <div className="dd-mix-legend">{used.map(key => <div key={key} title={exact(tokens[key])}><span><i style={{ background: tokenColors[key] }} />{t(key)}</span><strong>{compact(tokens[key])}</strong><small>{percent(tokens[key] / total)}</small></div>)}</div>
   </div>
 }
 
@@ -107,12 +108,13 @@ export function DistributionChart({ rows, t }: { rows: DashboardRow[]; t: T }) {
   })}</div>
 }
 
-export function TokenChart({ series, keys, reported, t }: { series: Record<string, Tokens>; keys: string[]; reported: number; t: T }) {
+export function TokenChart({ series, keys, tokens, reported, t }: { series: Record<string, Tokens>; keys: string[]; tokens: Tokens; reported: number; t: T }) {
   const { exact } = numberFormat(t('numberLocale'))
   const [hidden, setHidden] = useState<string[]>([])
   const [hover, setHover] = useState<string | null>(null)
   const fillId = useId()
-  const active = tokenKeys.filter(key => !hidden.includes(key))
+  const used = usedTokenKeys(tokens)
+  const active = used.filter(key => !hidden.includes(key))
   const points = keys.map(key => series[key] ?? zeroTokens())
   const totals = points.map(point => active.reduce((sum, key) => sum + point[key], 0))
   const total = totals.reduce((sum, value) => sum + value, 0)
@@ -128,12 +130,12 @@ export function TokenChart({ series, keys, reported, t }: { series: Record<strin
   const hovered = hover === null ? -1 : keys.indexOf(hover)
   return <section className="dd-feature dd-token-line" aria-labelledby="dd-line-title">
     <div className="dd-card-head"><div><h2 id="dd-line-title">{t('chartTokens')}</h2><MetricNumber value={reported ? total : null} unit="Token" t={t} /></div>
-      {reported > 0 && <details className="dd-data"><summary>{t('chartData')}</summary><div className="dd-table-scroll"><table>
-        <thead><tr><th>{t('time')}</th>{tokenKeys.map(key => <th key={key}>{t(key)}</th>)}</tr></thead>
-        <tbody>{keys.map((key, i) => <tr key={key}><th>{shortTime(key)}</th>{tokenKeys.map(type => <td key={type}>{exact(points[i][type])}</td>)}</tr>)}</tbody>
+      {used.length > 0 && <details className="dd-data"><summary>{t('chartData')}</summary><div className="dd-table-scroll"><table>
+        <thead><tr><th>{t('time')}</th>{used.map(key => <th key={key}>{t(key)}</th>)}</tr></thead>
+        <tbody>{keys.map((key, i) => <tr key={key}><th>{shortTime(key)}</th>{used.map(type => <td key={type}>{exact(points[i][type])}</td>)}</tr>)}</tbody>
       </table></div></details>}
     </div>
-    <div className="dd-legend dd-token-legend">{tokenKeys.map(key => <button key={key} disabled={!reported} aria-pressed={!hidden.includes(key)}
+    <div className="dd-legend dd-token-legend">{used.map(key => <button key={key} disabled={!reported} aria-pressed={!hidden.includes(key)}
       onClick={() => setHidden(list => list.includes(key) ? list.filter(value => value !== key) : [...list, key])}><i style={{ background: tokenColors[key] }} />{t(key)}</button>)}</div>
     {reported > 0 && keys.length ? <Plot keys={keys} max={max} t={t}>
       <svg className="dd-line-plot" viewBox="0 0 500 100" preserveAspectRatio="none" role="group" aria-label={t('chartTokens')}>
@@ -178,6 +180,7 @@ export function RankingChart({ rows, t, mode, onSelect }: { rows: DashboardRow[]
   const { compact, exact } = numberFormat(t('numberLocale'))
   const items = new Map<string, { id: string; name: string; tokens: number }>()
   for (const row of rows) {
+    if (row.unavailable || !row.usage.reported) continue
     const id = mode === 'session' ? row.id : row.projectId, name = mode === 'session' ? row.title || row.id : row.project || t('noProject')
     const item = items.get(id) ?? { id, name, tokens: 0 }; item.tokens += tokenTotal(row.usage.tokens); items.set(id, item)
   }
