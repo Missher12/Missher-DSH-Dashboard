@@ -2,7 +2,9 @@
 
 ![Dashboard · 工作仪表盘（品牌插画）](docs/images/cover-v2.png)
 
-`@missher/dsh-dashboard` 0.3.4，开发 SDK 为 DeepSeek Harness 0.2.1-rc.4，本轮在日常 0.2.2-rc.3 上验证。安装后从侧栏「工作仪表盘」打开，默认显示近 7 天。
+`@missher/dsh-dashboard` 0.3.5，开发 SDK 为 DeepSeek Harness 0.2.1-rc.4，本轮在日常 0.2.2-rc.3 上验证。安装后从侧栏「工作仪表盘」打开，默认显示近 7 天。
+
+页面与宿主原生插件页对齐：内容列最大 960px 并居中，左右留白为 24–48px，窄窗口为 20px；macOS 顶部沿用宿主安全区并增加 28px 内容间距。标题为 20px，滚动条位于页面外侧。
 
 界面采用已选定的「晴蓝分析」布局：顶部四项卡片显示工作中、目标完成、需要关注和输入缓存命中率；左侧蓝色曲线展示所选 Token 构成的有效用量之和，右侧显示当前范围内的四条最近会话，可点击定位明细。项目筛选位于页首，今天、近 7 天、近 30 天控制趋势与明细。曲线经过真实采样点，平滑处不产生额外峰值，支持点击和悬停查看精确用量；大数按中文万、亿及英文 K、M、B 显示。
 
@@ -30,4 +32,4 @@ pnpm run build
 pnpm pack --pack-destination dist
 ```
 
-在桌面插件管理页添加 `dist/missher-dsh-dashboard-0.3.4.tgz` 并启用。无需为其他插件更新或重新打包。
+在桌面插件管理页添加 `dist/missher-dsh-dashboard-0.3.5.tgz` 并启用。无需为其他插件更新或重新打包。

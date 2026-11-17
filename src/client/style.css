@@ -8,13 +8,17 @@
   --dd-rule: color-mix(in srgb, var(--dd-text) 9%, var(--dd-base));
   --dd-blue: #628fce; --dd-teal: #55b7be; --dd-amber: #cba16a; --dd-purple: #9ab7ed;
   --dd-green: light-dark(#247d66, #76c8af); --dd-red: light-dark(#b64e5b, #ec9aa4);
+  --dsh-scrollbar-width:9px; --dsh-scrollbar-thumb-border:2px;
   box-sizing: border-box; height: 100%; overflow: auto; scrollbar-gutter: stable; overflow-anchor: none;
-  container-type: inline-size; padding: 26px clamp(12px, 2.8vw, 40px) 25px; font: inherit; font-size: 13px;
+  container-type: inline-size; padding: 28px clamp(24px, 4vw, 48px) 48px; font: inherit; font-size: 13px;
   color: var(--dd-text); background: var(--dd-base);
 }
+.dd-overview,.dd-footer { width:100%; max-width:960px; min-width:0; margin-inline:auto; }
+[data-platform='darwin'] .dd-page { padding-top:calc(28px + var(--dsh-frame-top-clearance,0px)); }
+@media (max-width:767px) { .dd-page { padding-inline:20px; } }
 .dd-page *, .dd-page *::before, .dd-page *::after { box-sizing:border-box; }
 .dd-page h1,.dd-page h2,.dd-page h3,.dd-page h4,.dd-page p { margin:0; }
-.dd-page h1 { font-size:23px; line-height:1.3; font-weight:600; letter-spacing:-.4px; }
+.dd-page h1 { font-size:20px; line-height:28px; font-weight:500; }
 .dd-page h2 { font-size:18px; font-weight:600; }
 .dd-page h3 { font-size:15px; font-weight:600; }
 .dd-page h4 { font-size:13px; font-weight:600; margin:0 0 9px; }
@@ -354,7 +358,6 @@
   .dd-mini-ring { width:36px; height:36px; right:12px; top:calc(50% - 18px); }
 }
 @container (max-width:370px) {
-  .dd-page h1 { font-size:21px; }
   .dd-range button { padding-inline:8px; }
   .dd-recent-copy strong { font-size:11px; }
   .dd-usage-row { flex-wrap:wrap; }

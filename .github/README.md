@@ -2,9 +2,9 @@
 
 ![Dashboard · 工作仪表盘（品牌插画）](../docs/images/cover-v2.png)
 
-当前版本 **0.3.4** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.4)
+当前版本 **0.3.5** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.5)
 
-已采用「晴蓝分析」布局：蓝色用量曲线、最近会话、横向使用统计及 Superagent 四张摘要卡。更多图表可在下方展开。
+已采用「晴蓝分析」布局：蓝色用量曲线、最近会话、横向使用统计及 Superagent 四张摘要卡。更多图表可在下方展开。内容与原生插件页对齐，采用最大 960px 居中列、原生页面留白与标题尺寸。
 
 | 查看什么 | 内容 |
 | --- | --- |
@@ -18,7 +18,7 @@
 
 ## 快速开始
 
-1. 从 [v0.3.4 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.4) 下载 `.tgz` 安装包。
+1. 从 [v0.3.5 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.5) 下载 `.tgz` 安装包。
 2. 在 DSH 插件管理页更新或安装 `@missher/dsh-dashboard` 并启用，按宿主提示重新加载。
 3. 从侧栏打开“工作仪表盘”，选择时间范围和项目。源码构建方法见[项目说明](../README.md)。
 
@@ -81,7 +81,7 @@
 <details>
 <summary>刚打开时为什么显示上次结果？</summary>
 
-0.3.4 会保存派生统计，重启先展示缓存及其时间，再后台重新读取记录。页面会区分缓存与更新状态；缓存损坏或不适用时重新汇总。
+插件会保存派生统计，重启先展示缓存及其时间，再后台重新读取记录。页面会区分缓存与更新状态；缓存损坏或不适用时重新汇总。
 
 </details>
 
