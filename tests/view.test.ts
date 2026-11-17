@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { acceptSnapshot, activityCounts, retainRowOrder, tokenDistribution } from '../src/client/data.ts'
 import { foldSession, zeroUsage } from '../src/fold.ts'
 import { axisMaximum, numberFormat } from '../src/client/numbers.ts'
+import { curvePath } from '../src/client/curve.ts'
 import { particles, usageModel } from '../src/client/usage-model.ts'
 import type { DashboardRow, Snapshot, UsageHistory } from '../src/types.ts'
 
@@ -77,4 +78,23 @@ test('dashboard figures use the UI language and rounded axes without clipping th
     const maximum = axisMaximum(peak)
     assert.ok(maximum >= peak && maximum > 0 && Number.isInteger(maximum / 2))
   }
+})
+
+test('the area curve passes through each sample without drawing invented peaks or negative usage', () => {
+  const values = [0, 8, 2, 12, 12, 0, 0, 1000, 3]
+  const path = curvePath(values.map((v,i)=>[i*100,v]))
+  let start = values[0], index = 0
+  for (const match of path.matchAll(/C([^C]+)/g)) {
+    const [,a,,b,x,end] = match[1].trim().split(',').map(Number)
+    assert.equal(x,(index+1)*100)
+    assert.equal(end,values[index+1])
+    for(let step=0;step<=40;step++){
+      const t=step/40, q=1-t, value=q*q*q*start+3*q*q*t*a+3*q*t*t*b+t*t*t*end
+      assert.ok(value>=Math.min(start,end)-1e-9&&value<=Math.max(start,end)+1e-9)
+    }
+    start=end;index++
+  }
+  assert.equal(index,values.length-1)
+  assert.equal(curvePath([]),'')
+  assert.equal(curvePath([[0,0]]),'M0,0')
 })

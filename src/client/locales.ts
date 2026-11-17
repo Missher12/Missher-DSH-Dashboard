@@ -1,4 +1,5 @@
 export const zh = {
+  recentSessions: '最近会话', moreStats: '更多统计', cacheRatio: '缓存读取 / 全部输入',
   numberLocale: 'zh-CN', countCalls: '次', peak: '峰值',
   cardPages: '会话卡片翻页', trendMetric: '趋势指标', sessionOverview: '普通会话概况', activeSessions: '活跃会话',
   heatTitle: '使用统计', allHistory: '全部历史', totalTokens: '累计 Token 数', peakDaily: '单日峰值 Token', longestSession: '最长会话', currentStreak: '当前连续天数', longestStreak: '最长连续天数',
@@ -32,6 +33,7 @@ export const zh = {
   taskQueued: '等待执行', taskReview: '待验收', taskAnswer: '等待回复', taskDelivery: '交付待处理', toolsRunning: '正在调用',
 }
 export const en: Record<keyof typeof zh, string> = {
+  recentSessions: 'Recent sessions', moreStats: 'More statistics', cacheRatio: 'Cache read / all input',
   numberLocale: 'en-US', countCalls: 'calls', peak: 'Peak',
   cardPages: 'Session card pages', trendMetric: 'Trend metric', sessionOverview: 'Session overview', activeSessions: 'Active sessions',
   heatTitle: 'Usage statistics', allHistory: 'All history', totalTokens: 'Total tokens', peakDaily: 'Peak daily tokens', longestSession: 'Longest session', currentStreak: 'Current streak (days)', longestStreak: 'Longest streak (days)',

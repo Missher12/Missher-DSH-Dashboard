@@ -1,9 +1,10 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { tokenTotal, zeroTokens } from '../fold.ts'
 import type { DashboardRow, Status, Tokens } from '../types.ts'
 import type { T } from './locales.ts'
 import { tokenBands, tokenDistribution, usedTokenKeys } from './data.ts'
 import { axisMaximum, numberFormat } from './numbers.ts'
+import { curvePath } from './curve.ts'
 
 export function MetricNumber({ value, unit, t }: { value: number | null; unit: string; t: T }) {
   if (value === null) return <strong className="dd-big">—</strong>
@@ -21,12 +22,13 @@ export function Empty({ t }: { t: T }) { return <div className="dd-empty">{t('no
 
 export function Sparkline({ values }: { values: number[] }) {
   const max = Math.max(...values, 1)
-  const points = values.map((value, i) => `${i / Math.max(values.length - 1, 1) * 100},${22 - value / max * 20}`).join(' ')
-  return <svg className="dd-mini dd-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">{values.length > 0 && <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />}</svg>
+  const path = curvePath(values.map((value, i) => [i / Math.max(values.length - 1, 1) * 100, 22 - value / max * 20]))
+  return <svg className="dd-mini dd-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">{path && <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />}</svg>
 }
 
-export function MiniProgress({ value, total }: { value: number; total: number }) {
+export function MiniProgress({ value, total, ring = false }: { value: number; total: number; ring?: boolean }) {
   const amount = total ? Math.min(100, value / total * 100) : 0
+  if (ring) return <span className="dd-mini-ring" aria-hidden="true" style={{visibility:total?'visible':'hidden','--dd-progress':amount+'%'} as CSSProperties}><b>{Math.round(amount)}%</b></span>
   return <span className="dd-completion" aria-hidden="true" style={{ visibility: total ? 'visible' : 'hidden' }}>
     <small>{Math.round(amount)}%</small><span className="dd-mini-progress"><i style={{ width: amount + '%' }} /></span>
   </span>
@@ -121,13 +123,9 @@ export function TokenChart({ series, keys, tokens, reported, t }: { series: Reco
   const max = axisMaximum(Math.max(0, ...totals))
   const x = (index: number) => index * 500 / Math.max(1, keys.length - 1)
   const y = (value: number) => 100 - 100 * value / max
-  // The curve stays between adjacent samples, including when a period has no usage.
-  const segments = totals.map((value, index) => {
-    if (!index) return 'M0,' + y(value)
-    const mid = (x(index - 1) + x(index)) / 2
-    return 'C' + mid + ',' + y(totals[index - 1]) + ' ' + mid + ',' + y(value) + ' ' + x(index) + ',' + y(value)
-  }).join(' ')
+  const segments = curvePath(totals.map((value, index) => [x(index), y(value)]))
   const hovered = hover === null ? -1 : keys.indexOf(hover)
+  const marker = hovered >= 0 ? hovered : totals.indexOf(Math.max(...totals))
   return <section className="dd-feature dd-token-line" aria-labelledby="dd-line-title">
     <div className="dd-card-head"><div><h2 id="dd-line-title">{t('chartTokens')}</h2><MetricNumber value={reported ? total : null} unit="Token" t={t} /></div>
       {used.length > 0 && <details className="dd-data"><summary>{t('chartData')}</summary><div className="dd-table-scroll"><table>
@@ -139,10 +137,10 @@ export function TokenChart({ series, keys, tokens, reported, t }: { series: Reco
       onClick={() => setHidden(list => list.includes(key) ? list.filter(value => value !== key) : [...list, key])}><i style={{ background: tokenColors[key] }} />{t(key)}</button>)}</div>
     {reported > 0 && keys.length ? <Plot keys={keys} max={max} t={t}>
       <svg className="dd-line-plot" viewBox="0 0 500 100" preserveAspectRatio="none" role="group" aria-label={t('chartTokens')}>
-        <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop stopColor="var(--dd-lime)" stopOpacity=".36" /><stop offset="1" stopColor="var(--dd-lime)" stopOpacity=".05" /></linearGradient></defs>
+        <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop stopColor="var(--dd-accent)" stopOpacity=".22" /><stop offset="1" stopColor="var(--dd-accent)" stopOpacity=".008" /></linearGradient></defs>
         <path d={segments + ' L500,100 L0,100Z'} fill={'url(#' + fillId + ')'} />
-        <path d={segments} fill="none" stroke="var(--dd-lime-line)" strokeWidth="2.3" vectorEffect="non-scaling-stroke" />
-        {hovered >= 0 && <line x1={x(hovered)} x2={x(hovered)} y1="0" y2="100" className="dd-crosshair" vectorEffect="non-scaling-stroke" />}
+        <path d={segments} fill="none" stroke="var(--dd-accent)" strokeWidth="2.6" vectorEffect="non-scaling-stroke" />
+        {marker >= 0 && <line x1={x(marker)} x2={x(marker)} y1="0" y2="100" className="dd-crosshair" vectorEffect="non-scaling-stroke" />}
         {keys.map((key, index) => {
           const half = 250 / Math.max(1, keys.length - 1)
           const left = Math.max(0, x(index) - half)

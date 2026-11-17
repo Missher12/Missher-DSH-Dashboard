@@ -1,10 +1,9 @@
-import { useLayoutEffect, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { DashboardRow } from '../types.ts'
 import { CountChart, MetricNumber, statusColors } from './charts.tsx'
-import { tokenTotal } from '../fold.ts'
-import { numberFormat } from './numbers.ts'
 import type { T } from './locales.ts'
+import { attentionStates } from './data.ts'
 
 export function StatusLabel({ row, t }: { row: DashboardRow; t: T }) {
   const action = row.ticket?.action
@@ -12,40 +11,24 @@ export function StatusLabel({ row, t }: { row: DashboardRow; t: T }) {
   return <span className="dd-status" style={{ '--dd-status-color': statusColors[row.status] } as CSSProperties}><i />{label}</span>
 }
 
-export function SessionDeck({ rows, ready, projectControl, onSelect, t }: {
-  rows: DashboardRow[]; ready: boolean; projectControl: ReactNode; onSelect: (id: string) => void; t: T
+export function RecentSessions({ rows, ready, onSelect, t }: {
+  rows: DashboardRow[]; ready: boolean; onSelect: (id: string) => void; t: T
 }) {
-  const { compact, exact } = numberFormat(t('numberLocale'))
-  const [page, setPage] = useState(0)
-  const pageCount = Math.max(1, Math.ceil(rows.length / 4))
-  const current = Math.min(page, pageCount - 1)
-  useLayoutEffect(() => { if (page !== current) setPage(current) }, [page, current])
-  return <section className="dd-feature dd-deck" aria-labelledby="dd-deck-title">
-    <div className="dd-card-head">
-      <div><h2 id="dd-deck-title">{t('regularSessions')}</h2><MetricNumber value={ready ? rows.length : null} unit={t('sessionsUnit')} t={t} /></div>
-      {projectControl}
+  return <section className="dd-feature dd-recent" aria-labelledby="dd-recent-title">
+    <div className="dd-card-head"><h2 id="dd-recent-title">{t('recentSessions')}</h2><span className="dd-count">{ready ? rows.length : '—'}</span></div>
+    <div className="dd-recent-list">
+      {rows.slice(0,4).map(row => <button key={row.id} onClick={()=>onSelect(row.id)} title={row.title || row.id}>
+        <span className="dd-recent-icon" style={{'--dd-status-color':statusColors[row.status]} as CSSProperties}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {row.running ? <path d="m13 2-9 12h7l-1 8 10-12h-7l1-8Z"/> : attentionStates.has(row.status) ? <><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></> : <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>}
+          </svg>
+        </span>
+        <span className="dd-recent-copy"><strong>{row.title || row.id}</strong><small>{row.project || t('noProject')}</small></span>
+        <StatusLabel row={row} t={t}/>
+      </button>)}
+      {!rows.length && <span className="dd-recent-empty">{t(ready?'noData':'loading')}</span>}
     </div>
-    <div className="dd-deck-items">
-      {rows.slice(current * 4, current * 4 + 4).map(row => {
-        const project = row.project || t('noProject')
-        const usage = row.usage.reported > 0 && !row.unavailable ? tokenTotal(row.usage.tokens) : null
-        return <button key={row.id} className="dd-session-tile" onClick={() => onSelect(row.id)} title={row.title || row.id}>
-          <span className="dd-tile-copy"><strong>{row.title || row.id}</strong><small>{project}</small></span>
-          <span className="dd-tile-foot">
-            <StatusLabel row={row} t={t} />
-            <span className="dd-tile-tokens" title={usage === null ? t('noUsage') : exact(usage) + ' Token'}>
-              {usage === null ? '—' : <>{compact(usage)} <small>Token</small></>}
-            </span>
-          </span>
-        </button>
-      })}
-      {!rows.length && <div className="dd-deck-empty">{t(ready ? 'noData' : 'loading')}</div>}
-    </div>
-    <nav className="dd-deck-pager" aria-label={t('cardPages')}>
-      <button className="dd-button" disabled={!current} onClick={() => setPage(current - 1)}>← {t('previousPage')}</button>
-      <span aria-live="polite">{current + 1} / {pageCount}</span>
-      <button className="dd-button" disabled={current + 1 >= pageCount} onClick={() => setPage(current + 1)}>{t('nextPage')} →</button>
-    </nav>
+    <div className="dd-recent-foot"><span><i style={{background:'var(--dd-green)'}}/>{t('running')} {rows.filter(r=>r.running).length}</span><span><i style={{background:'var(--dd-red)'}}/>{t('needAttention')} {rows.filter(r=>attentionStates.has(r.status)).length}</span></div>
   </section>
 }
 

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import type { DashboardRow, Snapshot, Tokens } from '../types.ts'
 import { ProgressChart, RankingChart, StateChart, statusOrder, TokenChart, TokenMixChart, DistributionChart, Sparkline, MiniProgress } from './charts.tsx'
 import { acceptSnapshot, activityCounts, usedTokenKeys, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
-import { ActivityTrend, SessionDeck, StatusLabel } from './board.tsx'
+import { ActivityTrend, RecentSessions, StatusLabel } from './board.tsx'
 import type { T, zh } from './locales.ts'
 import { numberFormat } from './numbers.ts'
 import { UsageStatistics } from './usage-stats.tsx'
@@ -24,7 +24,7 @@ function Summary({ label, value, hint, tone, onClick, children }: {
 }) {
   const content = <><span className="dd-stat-label">{tone && <i className={'dd-dot-' + tone} />}{label}{onClick && <span aria-hidden="true">›</span>}</span>
     <strong className="dd-stat-value">{value}</strong></>
-  return <div className="dd-stat" title={hint}>{onClick ? <button onClick={onClick}>{content}</button> : content}{children}</div>
+  return <div className="dd-stat" title={hint}>{onClick ? <button onClick={onClick}>{content}</button> : content}{children}<span className="dd-stat-hint">{hint}</span></div>
 }
 export function App({ t, openSession }: AppProps) {
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(() => snapshots.get(7) ?? null)
@@ -70,13 +70,12 @@ export function App({ t, openSession }: AppProps) {
   } else if (!rangePending && snapshot?.scanning) {
     latest = <>{t('scanning')} {snapshot.scanned}/{snapshot.totalSessions || '…'}</>
   }
-  return <main className="dd-page" aria-busy={!snapshot || !snapshot.dataReady && snapshot.scanning || rangePending}>
-    <header className="dd-header">
+  const renderHeader = (projectControl: ReactNode) => (<header className="dd-header">
       <div className="dd-heading">
         <h1>{t('panel')}</h1>
         <div className="dd-meta"><span role={notice ? 'alert' : 'status'} className={notice ? 'dd-error' : undefined} title={notice || snapshot?.timeZone}>{notice || latest}</span></div>
       </div>
-      <div className="dd-controls">
+      <div className="dd-controls">{projectControl}
         <label className="dd-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />{t('showArchived')}</label>
         <div className="dd-segmented dd-range" role="group" aria-label={t('range')}>
           {([1, 7, 30] as const).map(value => <button key={value} aria-pressed={days === value} onClick={() => {
@@ -86,12 +85,14 @@ export function App({ t, openSession }: AppProps) {
         </div>
         <button className="dd-button" onClick={() => void refresh()} disabled={busy}>{t('refresh')}</button>
       </div>
-    </header>
-    <SessionSection refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
+    </header>)
+  return <main className="dd-page" aria-busy={!snapshot || !snapshot.dataReady && snapshot.scanning || rangePending}>
+
+    <SessionSection renderHeader={renderHeader} refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
     <footer className="dd-footer"><details><summary>{t('statisticsNote')}</summary><p>{t('note')}</p></details></footer>
   </main>
 }
-function SessionSection({ snapshot, archived, t, openSession, refresh, busy }: AppProps & { snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean }) {
+function SessionSection({ snapshot, archived, t, openSession, refresh, busy, renderHeader }: AppProps & { snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean; renderHeader: (project: ReactNode) => ReactNode }) {
   const [project, setProject] = useState(''), [status, setStatus] = useState<string>('all'), [search, setSearch] = useState(''), [rank, setRank] = useState<'session' | 'project'>('session')
   const [projectLabel, setProjectLabel] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null), [page, setPage] = useState(0), [error, setError] = useState('')
@@ -167,26 +168,27 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy }: A
   const { compact, exact } = numberFormat(t('numberLocale'))
   const title = t('regularSessions'), superagent = data.superagent
   const superagentReady = snapshot && snapshot.superagent !== 'unavailable'
+  const promptTokens = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
   return <div className="dd-overview">
-    {error && <p className="dd-notice dd-error" role="alert">{t('openError')}</p>}
-    <section className="dd-stats" aria-label={t('sessionOverview')}>
-      <Summary tone="running" label={t('running')} value={snapshot ? String(data.scoped.filter(r => r.running).length) : '—'} hint={t('liveNow')} onClick={() => selectStatus('running')} />
-      <Summary tone="attention" label={t('needAttention')} value={snapshot ? String(data.scoped.filter(r => attentionStates.has(r.status)).length) : '—'} hint={t('liveNow')} onClick={() => selectStatus('attention')} />
-      <Summary label={t('completed')} value={<Ratio done={data.complete} total={data.goals.length} />} hint={t('goalsCount')}><MiniProgress value={data.complete} total={data.goals.length} /></Summary>
-      <Summary label={t('checklist')} value={<Ratio done={data.done} total={data.todos.length} />} hint={t('chartProgressHint')}><MiniProgress value={data.done} total={data.todos.length} /></Summary>
-    </section>
-    <div className="dd-board">
-      <SessionDeck key={JSON.stringify([project, actualDays, archived])} rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t}
-        projectControl={<div className="dd-controls">
+    {renderHeader(<div className="dd-controls">
           <label className="dd-visually-hidden" htmlFor="dd-project">{title} · {t('project')}</label>
           <span className="dd-select"><select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}>
             <option value="">{t('allProjects')}</option>
             {project && !data.projects.has(project) && <option value={project}>{projectLabel || project}</option>}
             {[...data.projects].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select></span>
-        </div>} />
-      <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
+        </div>)}
+    {error && <p className="dd-notice dd-error" role="alert">{t('openError')}</p>}
+    <section className="dd-stats" aria-label={t('sessionOverview')}>
+      <Summary tone="running" label={t('running')} value={snapshot ? <>{data.scoped.filter(r=>r.running).length}<small> / {data.scoped.length}</small></> : '—'} hint={t('liveNow')} onClick={()=>selectStatus('running')} />
+      <Summary label={t('completed')} value={<Ratio done={data.complete} total={data.goals.length}/>} hint={t('goalsCount')}><MiniProgress value={data.complete} total={data.goals.length}/></Summary>
+      <Summary tone="attention" label={t('needAttention')} value={snapshot ? String(data.scoped.filter(r=>attentionStates.has(r.status)).length) : '—'} hint={t('liveNow')} onClick={()=>selectStatus('attention')} />
+      <Summary label={t('cache')} value={data.usage.reported && promptTokens ? numberFormat(t('numberLocale')).percent(data.usage.tokens.cacheRead/promptTokens) : '—'} hint={t('cacheRatio')} />
+    </section>
+    <div className="dd-board">
+
       <TokenChart series={data.series} keys={keys} tokens={data.usage.tokens} reported={data.usage.reported} t={t} />
+      <RecentSessions rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t} />
       <UsageStatistics history={snapshot?.usageHistory} today={snapshot?.today} zone={snapshot?.timeZone} project={project} archived={archived} t={t} refresh={refresh} busy={busy} />
     </div>
     <section className="dd-superagent" aria-labelledby="dd-superagent-title">
@@ -194,18 +196,11 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy }: A
       <div className="dd-superagent-cards">
         <Summary tone="running" label={t('running')} value={superagentReady ? String(superagent.rows.filter(row => row.running).length) : '—'} hint={t('liveNow')} />
         <Summary tone="attention" label={t('needAttention')} value={superagentReady ? String(superagent.rows.filter(row => attentionStates.has(row.status)).length) : '—'} hint={t('liveNow')} />
-        <Summary label={t('taskCompleted')} value={<Ratio done={superagent.complete} total={superagentReady ? superagent.goals.length : 0} />} hint={t('goalsCount')}><MiniProgress value={superagentReady ? superagent.complete : 0} total={superagentReady ? superagent.goals.length : 0} /></Summary>
+        <Summary label={t('taskCompleted')} value={<Ratio done={superagent.complete} total={superagentReady ? superagent.goals.length : 0} />} hint={t('goalsCount')}><MiniProgress ring value={superagentReady ? superagent.complete : 0} total={superagentReady ? superagent.goals.length : 0} /></Summary>
         <Summary label={t('tokens')} value={superagentReady && superagent.usage.reported ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')}><Sparkline values={superagentReady && superagent.usage.reported ? keys.map(key => superagent.series[key] ?? 0) : []} /></Summary>
       </div>
       <p className="dd-source-notice" role="status" title={t(snapshot?.superagent === 'partial' ? 'sourcePartial' : 'sourceUnavailable')}>{snapshot?.superagent === 'partial' ? t('sourcePartial') : snapshot?.superagent === 'unavailable' && !snapshot.scanning ? t('sourceUnavailable') : '\u00a0'}</p>
     </section>
-    <div className="dd-chart-grid">
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><div className="dd-chart-body"><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><div className="dd-chart-body"><TokenMixChart tokens={data.usage.tokens} reported={data.usage.reported} t={t} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartDistributionHint')}>{t('chartDistribution')}</h3></div><div className="dd-chart-body"><DistributionChart rows={data.scoped} t={t} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><div className="dd-chart-body"><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><div className="dd-chart-body"><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></div></section>
-    </div>
     <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><span className="dd-select"><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></span></div></div>
       <div ref={list} className="dd-table-scroll dd-session-list" style={{ minHeight: listHeight }}><table className="dd-session-table"><thead><tr><th>{t('session')}</th><th>{t('status')}</th><th>{t('progress')}</th><th>{t('tokens')}</th><th>{t('toolCalls')}</th><th>{t('updated')}</th></tr></thead><tbody>
         {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={row.unavailable || !row.usage.reported ? t('noUsage') : exact(tokenTotal(row.usage.tokens)) + ' Token'}>{row.unavailable || !row.usage.reported ? '—' : compact(tokenTotal(row.usage.tokens))}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
@@ -225,5 +220,15 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy }: A
       </tbody></table></div>
       <nav className="dd-pagination" style={{ visibility: pageCount > 1 ? 'visible' : 'hidden' }} aria-label={`${title} · ${t('pagination')}`}><span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, data.filtered.length)} / {data.filtered.length}</span><button className="dd-button" disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>{t('previousPage')}</button><span aria-live="polite">{currentPage + 1} / {pageCount}</span><button className="dd-button" disabled={currentPage + 1 === pageCount} onClick={() => changePage(currentPage + 1)}>{t('nextPage')}</button></nav>
     </section>
+    <details className="dd-more"><summary>{t('moreStats')}</summary>
+    <div className="dd-chart-grid">
+      <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
+      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><div className="dd-chart-body"><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></div></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><div className="dd-chart-body"><TokenMixChart tokens={data.usage.tokens} reported={data.usage.reported} t={t} /></div></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartDistributionHint')}>{t('chartDistribution')}</h3></div><div className="dd-chart-body"><DistributionChart rows={data.scoped} t={t} /></div></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><div className="dd-chart-body"><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></div></section>
+      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><div className="dd-chart-body"><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></div></section>
+    </div>
+    </details>
   </div>
 }

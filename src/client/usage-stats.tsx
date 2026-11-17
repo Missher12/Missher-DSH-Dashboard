@@ -113,10 +113,10 @@ export const UsageStatistics = memo(function UsageStatistics({history,today,proj
     [t('totalTokens'),model?.total,compact],[t('peakDaily'),model?.peak,compact],[t('longestSession'),model?.longestMs,(v:number)=>duration(v,locale==='zh-CN')],
     [t('currentStreak'),model?.current,exact],[t('longestStreak'),model?.longest,exact]
   ] as const
-  return <section className="dd-feature dd-usage-card" aria-labelledby="dd-usage-title" style={{'--du-accent':palette||'var(--dsw-alias-state-business-primary,#4d6bfe)'} as CSSProperties}>
+  return <section className="dd-feature dd-usage-card" aria-labelledby="dd-usage-title" style={{'--du-accent':palette||'var(--dd-accent)'} as CSSProperties}>
     <div className="dd-card-head"><h2 id="dd-usage-title">{t('heatTitle')}</h2><small>{t('allHistory')}</small></div>
     <dl className="dd-usage-metrics">{metrics.map(([label,v,format],i)=><div key={label}><dt title={label}>{label}</dt><dd title={v==null?undefined:i<2?exact(v)+' Token':format(v)}>{v==null?'—':format(v)}</dd></div>)}</dl>
-    <ParticleChart model={model} t={t} palette={palette}/>
-    <Hourly model={model} t={t} refresh={refresh} busy={busy} zone={zone}/>
+    <div className="dd-usage-panels"><ParticleChart model={model} t={t} palette={palette}/>
+      <Hourly model={model} t={t} refresh={refresh} busy={busy} zone={zone}/></div>
   </section>
 })
