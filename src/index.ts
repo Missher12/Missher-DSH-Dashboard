@@ -8,6 +8,7 @@ import type { IncomingMessage } from 'node:http'
 import { basename, isAbsolute, join, sep } from 'node:path'
 import { addUsage, calendar, foldSession, readTicket, statusOf, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from './fold.ts'
 import { loadCache, saveCache } from './cache.ts'
+import { registerCustomization } from './customization.ts'
 import type { DashboardRow, FoldedSession, Snapshot, Ticket, Tokens, UsageHistory } from './types.ts'
 
 export const name = 'missher-dashboard'
@@ -24,8 +25,11 @@ export class DashboardReader {
   private failed = new Set<string>()
   private tickets: Ticket[] = []
   private superagent: Snapshot['superagent'] = 'unavailable'
+  private ticketLifetime?: AbortSignal
+  private ticketScan?: Promise<void>
+  private lastTicketScan = 0
   private scan?: Promise<void>
-  private lastScan = 0
+  private lastScanFinished = 0
   private totalSessions = 0
   private scanned = 0
   private readError = false
@@ -45,7 +49,11 @@ export class DashboardReader {
     else this.cacheError = true
     this.ready = this.restore()
   }
-  async dispose() { this.lifetime.abort(); await this.ready; await this.scan; this.cache.clear() }
+  async dispose() {
+    this.lifetime.abort()
+    await Promise.all([this.ready, this.scan, this.ticketScan])
+    this.cache.clear()
+  }
 
   private async restore(): Promise<void> {
     if (!this.cacheFile) return
@@ -54,18 +62,39 @@ export class DashboardReader {
     // Persistence revisions only compare within one host service instance.
     // Restored statistics can paint immediately, but every log is revalidated.
     for (const row of saved.rows) this.cache.set(row.id, { revision: '', row })
-    this.tickets = saved.tickets; this.superagent = saved.superagent
+    this.tickets = saved.tickets
     this.totalSessions = saved.rows.length; this.updatedAt = this.cachedAt = saved.updatedAt
   }
 
-  private async readTickets(): Promise<void> {
+  private refreshTickets(now: number): void {
+    // Cordis get() only returns the active service, without adding an injection dependency.
+    const sourceLifetime = (this.ctx.get('orchestrator') as { lifetime: AbortSignal } | undefined)?.lifetime
+    const lifetime = sourceLifetime?.aborted ? undefined : sourceLifetime
+    if (lifetime !== this.ticketLifetime) {
+      this.ticketLifetime = lifetime
+      this.superagent = 'unavailable'
+      this.lastTicketScan = 0
+    }
+    const port = this.ctx.webServer.port
+    if (!lifetime || !port || this.ticketScan || now - this.lastTicketScan < 4000) return
+    this.lastTicketScan = now
+    this.ticketScan = this.readTickets(port, lifetime).finally(() => { this.ticketScan = undefined })
+  }
+
+  private async readTickets(port: number, lifetime: AbortSignal): Promise<void> {
+    const signal = AbortSignal.any([this.lifetime.signal, lifetime])
+    const current = () => !signal.aborted && this.ticketLifetime === lifetime
     const tickets = new Map<string, Ticket>()
     try {
       for (const state of ['open', 'ended']) {
         let offset: number | null = 0
         while (offset !== null) {
-          const response = await fetch(`http://127.0.0.1:${this.ctx.webServer.port}/orchestrator/api/tickets?state=${state}&offset=${offset}&limit=1000`, {
-            headers: { 'x-orchestrator-request': '1' }, signal: AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(8000)]) })
+          const response = await fetch(`http://127.0.0.1:${port}/orchestrator/api/tickets?state=${state}&offset=${offset}&limit=1000`, {
+            headers: { 'x-orchestrator-request': '1' }, signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) })
+          if (response.status === 404) {
+            if (current()) this.superagent = 'unavailable'
+            return
+          }
           if (!response.ok) throw new Error('Superagent unavailable')
           const page = await response.json() as { items: unknown[]; next_offset: number | null }
           if (!Array.isArray(page.items)) throw new Error('Invalid task page')
@@ -75,15 +104,17 @@ export class DashboardReader {
           offset = next
         }
       }
+      if (!current()) return
       const next = [...tickets.values()]
-      if (JSON.stringify(next) !== JSON.stringify(this.tickets) || this.superagent !== 'available') this.needsSave = true
+      if (JSON.stringify(next) !== JSON.stringify(this.tickets)) this.needsSave = true
       this.tickets = next; this.superagent = 'available'
-    } catch { this.superagent = this.tickets.length ? 'partial' : 'unavailable' }
+    } catch {
+      if (current() && this.superagent === 'available') this.superagent = 'partial'
+    }
   }
 
   private async refresh(): Promise<void> {
     const signal = this.lifetime.signal
-    const ticketRead = this.readTickets()
     try {
       const stored = await this.ctx.sessionPersistence.list({ signal })
       const live = new Map(this.ctx.agents.list().map(agent => [String(agent.id), agent]))
@@ -122,26 +153,32 @@ export class DashboardReader {
       for (const id of this.cache.keys()) if (!entries.has(id)) { this.cache.delete(id); this.failed.delete(id); this.needsSave = true }
       this.readError = false
     } catch { if (!signal.aborted) this.readError = true }
-    await ticketRead
     if (!signal.aborted && !this.readError && !this.failed.size) {
       this.updatedAt = Date.now(); this.cachedAt = undefined
       if (this.needsSave && this.cacheFile) {
+        this.needsSave = false
         try {
           await saveCache(this.cacheFile, { version: 1, timeZone: this.timeZone, updatedAt: this.updatedAt,
             rows: [...this.cache.values()].map(value => value.row), tickets: this.tickets, superagent: this.superagent })
-          this.needsSave = false; this.cacheError = false
-        } catch { this.cacheError = true }
+          this.cacheError = false
+        } catch { this.needsSave = true; this.cacheError = true }
       }
     }
   }
 
-  async snapshot(days: number): Promise<Snapshot & { readError: boolean }> {
+  async snapshot(days: number, force = false): Promise<Snapshot & { readError: boolean }> {
     await this.ready
-    if (!this.scan && Date.now() - this.lastScan >= 4000 && !this.lifetime.signal.aborted) {
-      this.lastScan = Date.now()
-      this.scan = this.refresh().finally(() => { this.scan = undefined })
+    const now = Date.now()
+    if (!this.lifetime.signal.aborted) {
+      this.refreshTickets(now)
+      if (!this.scan && (force || now - this.lastScanFinished >= 4000)) {
+        this.scan = this.refresh().finally(() => {
+          this.lastScanFinished = Date.now()
+          this.scan = undefined
+        })
+      }
     }
-    const now = Date.now(), today = calendar(this.timeZone)(now).slice(0, 10)
+    const today = calendar(this.timeZone)(now).slice(0, 10)
     const fromDate = new Date(Date.parse(`${today}T12:00:00Z`) - (days - 1) * 86400000).toISOString().slice(0, 10)
     const workspaces = this.ctx.workspaceRegistry.list().slice().sort((a, b) => b.path.length - a.path.length)
     const archived = new Set<string>(this.ctx.workspaceRegistry.archivedSessionIds)
@@ -190,13 +227,15 @@ export class DashboardReader {
         ...(this.failed.has(row.id) ? { unavailable: true } : {}) }
     }
     for (const { row } of this.cache.values()) rows.push(makeRow(row, tickets.get(row.id)))
-    for (const ticket of this.tickets) {
-      if (ticket.sessionId && this.cache.has(ticket.sessionId)) continue
-      const id = ticket.sessionId || `ticket:${ticket.id}`
-      const row = makeRow(foldSession({ id, createdAt: ticket.updatedAt, cwd: ticket.directory }, [], this.timeZone), ticket)
-      row.lifetimeTokens = null
-      if (ticket.sessionId) row.unavailable = true
-      rows.push(row)
+    if (this.superagent !== 'unavailable') {
+      for (const ticket of this.tickets) {
+        if (ticket.sessionId && this.cache.has(ticket.sessionId)) continue
+        const id = ticket.sessionId || `ticket:${ticket.id}`
+        const row = makeRow(foldSession({ id, createdAt: ticket.updatedAt, cwd: ticket.directory }, [], this.timeZone), ticket)
+        row.lifetimeTokens = null
+        if (ticket.sessionId) row.unavailable = true
+        rows.push(row)
+      }
     }
     return { generatedAt: this.updatedAt || now, cachedAt: this.cachedAt, cacheError: this.cacheError,
       timeZone: this.timeZone, today, fromDate, days, scanned: this.scanned, totalSessions: this.totalSessions,
@@ -207,15 +246,17 @@ export class DashboardReader {
 
 export function apply(ctx: Context): void {
   const reader = new DashboardReader(ctx)
+  registerCustomization(ctx, req => allowedRequest(req, ctx.webServer.port ?? -1))
   ctx.effect(() => () => reader.dispose())
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/dsh-dashboard/api/snapshot', handler: async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     if (!allowedRequest(req, ctx.webServer.port ?? -1)) { res.writeHead(403); res.end('{"error":"Forbidden"}'); return }
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); res.writeHead(405); res.end('{"error":"Read only"}'); return }
-    const days = Number(new URL(req.url!, 'http://localhost').searchParams.get('days') ?? 1)
+    const params = new URL(req.url!, 'http://localhost').searchParams
+    const days = Number(params.get('days') ?? 1)
     if (![1, 7, 30].includes(days)) { res.writeHead(400); res.end('{"error":"Invalid range"}'); return }
-    try { const payload = JSON.stringify(await reader.snapshot(days)); res.writeHead(200); res.end(payload) }
+    try { const payload = JSON.stringify(await reader.snapshot(days, params.get('refresh') === '1')); res.writeHead(200); res.end(payload) }
     catch { if (!res.headersSent) res.writeHead(500); res.end('{"error":"Snapshot unavailable"}') }
   } }))
 }

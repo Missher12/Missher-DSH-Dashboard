@@ -24,6 +24,9 @@ export function apply(ctx: ClientContext) {
     ctx.uiWorkspace.openSession(id as SessionId)
   }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL, locale: 'dshDashboard', inject: () => ({}) },
-    (props: { t: T }) => <App t={props.t} openSession={openSession} />))
+    (props: { t: T }) => {
+      const navigation = ctx.get('pluginNavigation') as { openBundle(id: string): void } | undefined
+      return <App t={props.t} openSession={openSession} openPlugin={navigation ? id => navigation.openBundle(id) : undefined} />
+    }))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: 11, label: () => t('panel'), locale: 'dshDashboard' }, Icon))
 }

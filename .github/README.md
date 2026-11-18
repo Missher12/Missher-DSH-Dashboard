@@ -2,23 +2,24 @@
 
 ![Dashboard · 工作仪表盘（品牌插画）](../docs/images/cover-v2.png)
 
-当前版本 **0.3.5** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.5)
+当前版本 **0.4.0** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.0)
 
-已采用「晴蓝分析」布局：蓝色用量曲线、最近会话、横向使用统计及 Superagent 四张摘要卡。更多图表可在下方展开。内容与原生插件页对齐，采用最大 960px 居中列、原生页面留白与标题尺寸。
+已采用「晴蓝分析」布局，包含蓝色用量曲线、最近会话和横向使用统计。仪表盘可单独使用，启用 SuperAgent 后可显示任务摘要。内容与原生插件页对齐，采用最大 960px 居中列、原生页面留白与标题尺寸。
 
 | 查看什么 | 内容 |
 | --- | --- |
 | 普通会话 | 状态、筛选、每页 10 条明细与原会话入口 |
+| 自定义 | 挑选页面内容和已安装插件卡片，重启恢复选择 |
 | 图表视图 | Token 趋势、会话状态、Token 构成、工具调用、活跃会话、53 周 Token 颗粒图和今日小时柱图、用量分布、清单进度与排行 |
 | 本地缓存 | 重启先显示已有统计，标明时间并在后台更新 |
 | 目标和清单 | 明确记录的完成状态及条目进度 |
-| Superagent | 工作中、需要关注、任务完成、Token 消耗四张概览卡片 |
+| SuperAgent（选装） | 任务数据可读取时显示工作中、需要关注、任务完成、已记录 Token 四张概览卡片 |
 
 使用统计沿用自有插件的五项摘要、每日／每周／累计切换与配色，跟随普通项目和归档筛选。统计通过宿主会话服务读取，不发起模型请求。后台更新保留筛选、页码、图例开关和已有列表顺序，整轮汇总后更新图表；空闲蓝色、工作中绿色、需关注红色。面板可见时每 5 秒刷新。图为功能示意，实际统计口径与宿主兼容范围见项目原说明。
 
 ## 快速开始
 
-1. 从 [v0.3.5 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.3.5) 下载 `.tgz` 安装包。
+1. 从 [v0.4.0 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.0) 下载 `.tgz` 安装包。
 2. 在 DSH 插件管理页更新或安装 `@missher/dsh-dashboard` 并启用，按宿主提示重新加载。
 3. 从侧栏打开“工作仪表盘”，选择时间范围和项目。源码构建方法见[项目说明](../README.md)。
 

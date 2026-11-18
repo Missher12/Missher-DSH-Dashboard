@@ -8,7 +8,7 @@ const priority = (row: DashboardRow) => row.running ? 0 : attentionStates.has(ro
 /** Keep a complete view while the next scan is still replacing individual rows. */
 export function acceptSnapshot(previous: SnapshotData | null, next: SnapshotData): SnapshotData {
   if (previous?.days === next.days && previous.timeZone === next.timeZone && (previous.dataReady || previous.cachedAt) && next.scanning) {
-    return { ...next, rows: previous.rows, usageHistory: previous.usageHistory, superagent: previous.superagent, failedSessions: previous.failedSessions,
+    return { ...next, rows: previous.rows, usageHistory: previous.usageHistory, superagent: next.superagent === 'unavailable' ? 'unavailable' : previous.superagent, failedSessions: previous.failedSessions,
       generatedAt: previous.generatedAt, today: previous.today, fromDate: previous.fromDate, dataReady: true }
   }
   return { ...next, dataReady: !next.scanning || !!next.cachedAt }

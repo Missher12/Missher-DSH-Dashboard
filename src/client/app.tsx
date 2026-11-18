@@ -8,13 +8,15 @@ import { ActivityTrend, RecentSessions, StatusLabel } from './board.tsx'
 import type { T, zh } from './locales.ts'
 import { numberFormat } from './numbers.ts'
 import { UsageStatistics } from './usage-stats.tsx'
+import { Customize, PluginCards, useLayoutPreference, usePluginCards } from './customize.tsx'
+import { superagentPackage, type DashboardLayout, type PluginCard } from '../layout.ts'
 
 const rowTitle = (row: DashboardRow) => row.title || row.id
 const completedGoal = (row: DashboardRow) => row.ticket ? row.ticket.stage === 'ended' && ['completed', 'merged'].includes(row.ticket.outcome ?? '') : row.goal?.phase === 'complete'
 const PAGE_SIZE = 10
 // Reopening a panel or a visited range can paint immediately while fresh data is fetched.
 const snapshots = new Map<number, SnapshotData>()
-type AppProps = { t: T; openSession: (id: string) => Promise<void> }
+type AppProps = { t: T; openSession: (id: string) => Promise<void>; openPlugin?: (id: string) => void }
 const date = (time: number, timeZone?: string) => new Intl.DateTimeFormat(undefined, { timeZone, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(time)
 function Ratio({ done, total }: { done: number; total: number }) {
   return total ? <>{done}<small> / {total}</small></> : <>—</>
@@ -26,41 +28,62 @@ function Summary({ label, value, hint, tone, onClick, children }: {
     <strong className="dd-stat-value">{value}</strong></>
   return <div className="dd-stat" title={hint}>{onClick ? <button onClick={onClick}>{content}</button> : content}{children}<span className="dd-stat-hint">{hint}</span></div>
 }
-export function App({ t, openSession }: AppProps) {
+export function App({ t, openSession, openPlugin }: AppProps) {
+  const preference = useLayoutPreference()
+  const [customizing, setCustomizing] = useState(false)
+  const { layout } = preference
+  const inventory = usePluginCards(customizing || layout.plugins.some(id => id !== superagentPackage), layout.plugins)
+  const cards = layout.plugins.flatMap(id => id === superagentPackage ? [] : inventory.cards?.filter(card => card.id === id) ?? [])
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(() => snapshots.get(7) ?? null)
   const [days, setDays] = useState(7), [archived, setArchived] = useState(false)
   const [error, setError] = useState(''), [busy, setBusy] = useState(false)
-  const request = useRef<AbortController | null>(null), generation = useRef(0), timer = useRef<ReturnType<typeof setTimeout>>()
-  const refresh = useCallback(async function run() {
-    if (request.current) return
+  const request = useRef<AbortController | null>(null), manual = useRef(false), timer = useRef<ReturnType<typeof setTimeout>>()
+  const refreshSnapshot = useCallback(async function run(force = false) {
+    if (force ? manual.current : request.current) return
+    if (force) {
+      request.current?.abort()
+      manual.current = true
+      setBusy(true)
+    }
     clearTimeout(timer.current)
-    const controller = new AbortController(), version = generation.current; request.current = controller; setBusy(true)
+    const controller = new AbortController()
+    request.current = controller
     let delay = 5000
     try {
-      const response = await fetch(`/dsh-dashboard/api/snapshot?days=${days}`, { headers: { 'x-dsh-dashboard': '1' }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]) })
+      const response = await fetch(`/dsh-dashboard/api/snapshot?days=${days}${force ? '&refresh=1' : ''}`, { headers: { 'x-dsh-dashboard': '1' }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]) })
       if (!response.ok) throw new Error('Snapshot request failed')
       const next = await response.json() as SnapshotData
       if (!Array.isArray(next.rows)) throw new Error('Invalid snapshot')
-      if (!controller.signal.aborted && version === generation.current) {
-        setSnapshot(previous => { const accepted = acceptSnapshot(previous, next); snapshots.set(days, accepted); return accepted })
-        setError(''); delay = next.scanning ? 250 : 5000
-      }
-    } catch { if (!controller.signal.aborted && version === generation.current) setError('readFailed') }
-    finally {
-      if (request.current === controller) request.current = null
-      if (version === generation.current) {
+      if (request.current !== controller) return
+      setSnapshot(previous => { const accepted = acceptSnapshot(previous, next); snapshots.set(days, accepted); return accepted })
+      setError('')
+      if (next.scanning) delay = 250
+      else {
+        manual.current = false
         setBusy(false)
+      }
+    } catch {
+      if (request.current === controller) {
+        setError('readFailed')
+        manual.current = false
+        setBusy(false)
+      }
+    } finally {
+      if (request.current === controller) {
+        request.current = null
         timer.current = setTimeout(() => { if (document.visibilityState === 'visible') void run() }, delay)
       }
     }
   }, [days])
   useEffect(() => {
-    generation.current++; request.current?.abort(); request.current = null
-    void refresh()
-    const visible = () => { if (document.visibilityState === 'visible') void refresh() }
+    manual.current = false
+    setBusy(false)
+    void refreshSnapshot()
+    const visible = () => { if (document.visibilityState === 'visible') void refreshSnapshot() }
     document.addEventListener('visibilitychange', visible)
-    return () => { generation.current++; clearTimeout(timer.current); request.current?.abort(); request.current = null; document.removeEventListener('visibilitychange', visible) }
-  }, [refresh])
+    return () => { clearTimeout(timer.current); request.current?.abort(); request.current = null; document.removeEventListener('visibilitychange', visible) }
+  }, [refreshSnapshot])
+  const refresh = useCallback(() => { void refreshSnapshot(true) }, [refreshSnapshot])
   const rangePending = !!snapshot && snapshot.days !== days
   const notice = [error || snapshot?.readError ? t('readFailed') : '', snapshot?.cacheError ? t('cacheSaveFailed') : '', snapshot?.failedSessions ? `${t('partial')} · ${snapshot.failedSessions}` : ''].filter(Boolean).join(' · ')
   let latest: ReactNode = t('loading')
@@ -72,7 +95,14 @@ export function App({ t, openSession }: AppProps) {
   }
   const renderHeader = (projectControl: ReactNode) => (<header className="dd-header">
       <div className="dd-heading">
-        <h1>{t('panel')}</h1>
+        <div className="dd-heading-row">
+          <h1>{t('panel')}</h1>
+          <button type="button" className="dd-button dd-customize-button" aria-haspopup="dialog"
+            disabled={!preference.available && !preference.loadError}
+            onClick={() => preference.available ? setCustomizing(true) : preference.retry()}>
+            {t(!preference.available && preference.loadError ? 'retryLayout' : 'customize')}
+          </button>
+        </div>
         <div className="dd-meta"><span role={notice ? 'alert' : 'status'} className={notice ? 'dd-error' : undefined} title={notice || snapshot?.timeZone}>{notice || latest}</span></div>
       </div>
       <div className="dd-controls">{projectControl}
@@ -83,16 +113,21 @@ export function App({ t, openSession }: AppProps) {
             setSnapshot(snapshots.get(value) ?? snapshot)
           }}>{t(value === 1 ? 'today' : value === 7 ? 'week' : 'month')}</button>)}
         </div>
-        <button className="dd-button" onClick={() => void refresh()} disabled={busy}>{t('refresh')}</button>
+        <button className="dd-button" onClick={refresh} disabled={busy} aria-busy={busy}>{t('refresh')}</button>
       </div>
     </header>)
   return <main className="dd-page" aria-busy={!snapshot || !snapshot.dataReady && snapshot.scanning || rangePending}>
-
-    <SessionSection renderHeader={renderHeader} refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t} openSession={openSession} />
+    <SessionSection renderHeader={renderHeader} refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t}
+      openSession={openSession} openPlugin={openPlugin} layout={layout} cards={cards} />
+    {customizing && <Customize layout={layout} cards={inventory.cards} inventoryError={inventory.error} retryInventory={inventory.retry}
+      onSave={preference.save} onDismiss={() => setCustomizing(false)} t={t} />}
     <footer className="dd-footer"><details><summary>{t('statisticsNote')}</summary><p>{t('note')}</p></details></footer>
   </main>
 }
-function SessionSection({ snapshot, archived, t, openSession, refresh, busy, renderHeader }: AppProps & { snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean; renderHeader: (project: ReactNode) => ReactNode }) {
+function SessionSection({ snapshot, archived, t, openSession, openPlugin, refresh, busy, renderHeader, layout, cards }: AppProps & {
+  snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean; renderHeader: (project: ReactNode) => ReactNode
+  layout: DashboardLayout; cards: PluginCard[]
+}) {
   const [project, setProject] = useState(''), [status, setStatus] = useState<string>('all'), [search, setSearch] = useState(''), [rank, setRank] = useState<'session' | 'project'>('session')
   const [projectLabel, setProjectLabel] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null), [page, setPage] = useState(0), [error, setError] = useState('')
@@ -149,8 +184,8 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy, ren
   useLayoutEffect(() => { if (page >= pageCount) setPage(pageCount - 1) }, [page, pageCount])
   useLayoutEffect(() => {
     if (expanded) return
-    // Reserve the collapsed table's height across filtering and paging, never a detail row's height.
-    const height = list.current?.querySelector('table')?.getBoundingClientRect().height
+    // Include the list border and scrollbar when reserving the collapsed height.
+    const height = list.current?.getBoundingClientRect().height
     if (height) setListHeight(previous => Math.max(previous ?? 0, height))
   }, [data.filtered, currentPage, expanded])
   useLayoutEffect(() => {
@@ -167,7 +202,8 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy, ren
   const rangeLabel = t(actualDays === 1 ? 'today' : actualDays === 7 ? 'week' : 'month')
   const { compact, exact } = numberFormat(t('numberLocale'))
   const title = t('regularSessions'), superagent = data.superagent
-  const superagentReady = snapshot && snapshot.superagent !== 'unavailable'
+  const superagentReady = layout.plugins.includes(superagentPackage) && (snapshot?.superagent === 'available' || snapshot?.superagent === 'partial')
+  const showRecent = layout.sections.includes('recent')
   const promptTokens = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
   return <div className="dd-overview">
     {renderHeader(<div className="dd-controls">
@@ -185,22 +221,12 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy, ren
       <Summary tone="attention" label={t('needAttention')} value={snapshot ? String(data.scoped.filter(r=>attentionStates.has(r.status)).length) : '—'} hint={t('liveNow')} onClick={()=>selectStatus('attention')} />
       <Summary label={t('cache')} value={data.usage.reported && promptTokens ? numberFormat(t('numberLocale')).percent(data.usage.tokens.cacheRead/promptTokens) : '—'} hint={t('cacheRatio')} />
     </section>
-    <div className="dd-board">
+    <div className={showRecent ? 'dd-board' : 'dd-board dd-without-recent'}>
 
       <TokenChart series={data.series} keys={keys} tokens={data.usage.tokens} reported={data.usage.reported} t={t} />
-      <RecentSessions rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t} />
-      <UsageStatistics history={snapshot?.usageHistory} today={snapshot?.today} zone={snapshot?.timeZone} project={project} archived={archived} t={t} refresh={refresh} busy={busy} />
+      {showRecent && <RecentSessions rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t} />}
+      {layout.sections.includes('usage') && <UsageStatistics history={snapshot?.usageHistory} today={snapshot?.today} zone={snapshot?.timeZone} project={project} archived={archived} t={t} refresh={refresh} busy={busy} />}
     </div>
-    <section className="dd-superagent" aria-labelledby="dd-superagent-title">
-      <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{rangeLabel}</span></div>
-      <div className="dd-superagent-cards">
-        <Summary tone="running" label={t('running')} value={superagentReady ? String(superagent.rows.filter(row => row.running).length) : '—'} hint={t('liveNow')} />
-        <Summary tone="attention" label={t('needAttention')} value={superagentReady ? String(superagent.rows.filter(row => attentionStates.has(row.status)).length) : '—'} hint={t('liveNow')} />
-        <Summary label={t('taskCompleted')} value={<Ratio done={superagent.complete} total={superagentReady ? superagent.goals.length : 0} />} hint={t('goalsCount')}><MiniProgress ring value={superagentReady ? superagent.complete : 0} total={superagentReady ? superagent.goals.length : 0} /></Summary>
-        <Summary label={t('tokens')} value={superagentReady && superagent.usage.reported ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')}><Sparkline values={superagentReady && superagent.usage.reported ? keys.map(key => superagent.series[key] ?? 0) : []} /></Summary>
-      </div>
-      <p className="dd-source-notice" role="status" title={t(snapshot?.superagent === 'partial' ? 'sourcePartial' : 'sourceUnavailable')}>{snapshot?.superagent === 'partial' ? t('sourcePartial') : snapshot?.superagent === 'unavailable' && !snapshot.scanning ? t('sourceUnavailable') : '\u00a0'}</p>
-    </section>
     <section ref={table} className="dd-sessions"><div className="dd-section-head"><h3>{t('sessions')} <small>{data.filtered.length}</small></h3><div className="dd-controls"><label className="dd-visually-hidden" htmlFor="dd-search">{title} · {t('search')}</label><input id="dd-search" type="search" value={search} placeholder={t('search')} onChange={event => { setSearch(event.target.value); resetList() }} /><label className="dd-visually-hidden" htmlFor="dd-status">{title} · {t('status')}</label><span className="dd-select"><select id="dd-status" value={status} onChange={event => selectStatus(event.target.value, false)}><option value="all">{t('all')}</option><option value="attention">{t('needAttention')}</option>{statusOrder.filter(s => s !== 'attention').map(s => <option key={s} value={s}>{t(s)}</option>)}</select></span></div></div>
       <div ref={list} className="dd-table-scroll dd-session-list" style={{ minHeight: listHeight }}><table className="dd-session-table"><thead><tr><th>{t('session')}</th><th>{t('status')}</th><th>{t('progress')}</th><th>{t('tokens')}</th><th>{t('toolCalls')}</th><th>{t('updated')}</th></tr></thead><tbody>
         {data.filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'dd-selected' : ''}><td><button className="dd-title-button" onClick={() => setExpanded(id => id === row.id ? null : row.id)} aria-expanded={expanded === row.id} aria-controls={`dd-detail-${row.id}`}><span aria-hidden>{expanded === row.id ? '▾' : '▸'}</span><span><strong title={rowTitle(row)}>{rowTitle(row)}</strong><small>{row.project || t('noProject')} · {t(row.kind)}{row.archived ? ` · ${t('archived')}` : ''}</small></span></button></td><td><StatusLabel row={row} t={t} /></td><td>{row.todos?.length ? `${row.todos.filter(x => x.status === 'completed').length} / ${row.todos.length}` : row.goal ? t(row.goal.phase === 'active' ? 'active' : row.goal.phase) : '—'}</td><td title={row.unavailable || !row.usage.reported ? t('noUsage') : exact(tokenTotal(row.usage.tokens)) + ' Token'}>{row.unavailable || !row.usage.reported ? '—' : compact(tokenTotal(row.usage.tokens))}</td><td>{row.unavailable ? '—' : exact(row.usage.toolCalls)}</td><td>{date(row.updatedAt, snapshot?.timeZone)}</td></tr>
@@ -220,7 +246,18 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy, ren
       </tbody></table></div>
       <nav className="dd-pagination" style={{ visibility: pageCount > 1 ? 'visible' : 'hidden' }} aria-label={`${title} · ${t('pagination')}`}><span>{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, data.filtered.length)} / {data.filtered.length}</span><button className="dd-button" disabled={currentPage === 0} onClick={() => changePage(currentPage - 1)}>{t('previousPage')}</button><span aria-live="polite">{currentPage + 1} / {pageCount}</span><button className="dd-button" disabled={currentPage + 1 === pageCount} onClick={() => changePage(currentPage + 1)}>{t('nextPage')}</button></nav>
     </section>
-    <details className="dd-more"><summary>{t('moreStats')}</summary>
+    {superagentReady && <section className="dd-superagent" aria-labelledby="dd-superagent-title">
+      <div className="dd-section-head"><h2 id="dd-superagent-title">{t('superagent')}</h2><span>{rangeLabel}</span></div>
+      <div className="dd-superagent-cards">
+        <Summary tone="running" label={t('running')} value={String(superagent.rows.filter(row => row.running).length)} hint={t('liveNow')} />
+        <Summary tone="attention" label={t('needAttention')} value={String(superagent.rows.filter(row => attentionStates.has(row.status)).length)} hint={t('liveNow')} />
+        <Summary label={t('taskCompleted')} value={<Ratio done={superagent.complete} total={superagent.goals.length} />} hint={t('goalsCount')}><MiniProgress ring value={superagent.complete} total={superagent.goals.length} /></Summary>
+        <Summary label={t('tokens')} value={superagent.usage.reported ? compact(tokenTotal(superagent.usage.tokens)) : '—'} hint={t('reportedOnly')}><Sparkline values={superagent.usage.reported ? keys.map(key => superagent.series[key] ?? 0) : []} /></Summary>
+      </div>
+      <p className="dd-source-notice" role="status">{snapshot?.superagent === 'partial' ? t('sourcePartial') : '\u00a0'}</p>
+    </section>}
+    <PluginCards cards={cards} openPlugin={openPlugin} t={t} />
+    {layout.sections.includes('more') && <details className="dd-more"><summary>{t('moreStats')}</summary>
     <div className="dd-chart-grid">
       <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
       <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><div className="dd-chart-body"><StateChart rows={data.scoped} t={t} onSelect={selectStatus} /></div></section>
@@ -229,6 +266,6 @@ function SessionSection({ snapshot, archived, t, openSession, refresh, busy, ren
       <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><div className="dd-chart-body"><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></div></section>
       <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><div className="dd-chart-body"><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></div></section>
     </div>
-    </details>
+    </details>}
   </div>
 }

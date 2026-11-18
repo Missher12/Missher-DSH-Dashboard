@@ -38,11 +38,17 @@ export async function loadCache(file: string, timeZone: string): Promise<SavedDa
   try {
     const value = JSON.parse(await readFile(file, 'utf8'))
     if (object(value) && value.version === 1 && value.timeZone === timeZone && count(value.updatedAt)
-      && Array.isArray(value.rows) && value.rows.every(row) && new Set(value.rows.map((r: FoldedSession) => r.id)).size === value.rows.length
-      && Array.isArray(value.tickets) && value.tickets.every(ticket) && ['available', 'partial', 'unavailable'].includes(value.superagent)) return value as SavedDashboard
+      && Array.isArray(value.rows) && value.rows.every(row) && new Set(value.rows.map((r: FoldedSession) => r.id)).size === value.rows.length) {
+      return { version: 1, timeZone, updatedAt: value.updatedAt, rows: value.rows,
+        tickets: Array.isArray(value.tickets) ? value.tickets.filter(ticket) : [],
+        superagent: value.superagent === 'available' || value.superagent === 'partial' ? value.superagent : 'unavailable' }
+    }
   } catch { /* Missing, incompatible or damaged derived data is rebuilt from the host. */ }
 }
 export async function saveCache(file: string, value: SavedDashboard): Promise<void> {
+  await writeDashboardFile(file, value)
+}
+export async function writeDashboardFile(file: string, value: object): Promise<void> {
   await mkdir(dirname(file), { recursive: true, mode: 0o700 })
   const temporary = `${file}.${randomUUID()}.tmp`
   try {
