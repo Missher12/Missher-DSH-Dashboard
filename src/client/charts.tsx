@@ -154,13 +154,13 @@ export function TokenChart({ series, keys, tokens, reported, t }: { series: Reco
   </section>
 }
 
-export function StateChart({ rows, t, onSelect }: { rows: DashboardRow[]; t: T; onSelect: (status: Status) => void }) {
+export function StateChart({ rows, t }: { rows: DashboardRow[]; t: T }) {
   const counts = statusOrder.map(status => ({ status, count: rows.filter(r => r.status === status).length })).filter(r => r.count)
   let offset = 0
   return rows.length ? <div className="dd-state-chart"><svg viewBox="0 0 200 200" role="img" aria-label={t('chartStatus')}>
     {counts.map(({ status, count }) => { const size = count / rows.length * 100, start = offset; offset += size; return <circle key={status} cx="100" cy="100" r="71" pathLength="100" fill="none" stroke={statusColors[status]} strokeWidth="21" strokeDasharray={`${size} ${100 - size}`} strokeDashoffset={-start} transform="rotate(-90 100 100)"><title>{t(status)} {count}</title></circle> })}
     <text x="100" y="100" textAnchor="middle" className="dd-donut-value">{rows.length}</text><text x="100" y="123" textAnchor="middle">{t('sessionsUnit')}</text>
-  </svg><div className="dd-state-legend">{counts.map(({ status, count }) => <button key={status} onClick={() => onSelect(status)}><i style={{ background: statusColors[status] }} /><span>{t(status)}</span><strong>{count}</strong></button>)}</div></div> : <Empty t={t} />
+  </svg><div className="dd-state-legend">{counts.map(({ status, count }) => <div key={status}><i style={{ background: statusColors[status] }} /><span>{t(status)}</span><strong>{count}</strong></div>)}</div></div> : <Empty t={t} />
 }
 
 export function ProgressChart({ rows, t, onSelect }: { rows: DashboardRow[]; t: T; onSelect: (id: string) => void }) {
