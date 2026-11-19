@@ -2,7 +2,7 @@ import { memo, useMemo, useRef, useState, useSyncExternalStore, type CSSProperti
 import type { UsageHistory } from '../types.ts'
 import type { T } from './locales.ts'
 import { numberFormat } from './numbers.ts'
-import { particles, usageModel, type ParticleMode, type UsageModel } from './usage-model.ts'
+import { particleCount, particleDaysPerWeek, particleWeeks, particles, usageModel, type ParticleMode, type UsageModel } from './usage-model.ts'
 
 const paletteKey = 'dsh.usage-statistics.particle-color.v1'
 const presets = [['','themeColor'],['#8b6ccf','violetColor'],['#447fcb','blueColor'],['#369f97','tealColor'],['#c69749','amberColor'],['#ca758f','roseColor']] as const
@@ -32,9 +32,10 @@ function Palette({ color, t }: { color: string; t: T }) {
 }
 
 const modes = ['daily','weekly','cumulative'] as const
+const particleGrid = { '--dd-particle-rows': particleDaysPerWeek, '--dd-particle-columns': particleWeeks } as CSSProperties
 const clock = (h: number) => String(h).padStart(2,'0') + ':00'
 function moveCell(e: KeyboardEvent<HTMLButtonElement>, index: number, count: number, columns: boolean) {
-  const offset: Record<string,number> = columns ? {ArrowLeft:-7,ArrowRight:7,ArrowUp:-1,ArrowDown:1} : {ArrowLeft:-1,ArrowRight:1}
+  const offset: Record<string,number> = columns ? {ArrowLeft:-particleDaysPerWeek,ArrowRight:particleDaysPerWeek,ArrowUp:-1,ArrowDown:1} : {ArrowLeft:-1,ArrowRight:1}
   const next = e.key==='Home' ? 0 : e.key==='End' ? count-1 : e.key in offset ? Math.min(count-1, Math.max(0, index+offset[e.key])) : undefined
   if (next === undefined) return
   e.preventDefault()
@@ -61,7 +62,7 @@ function ParticleChart({model, t, palette}: { model: UsageModel | null; t: T; pa
   const choose = (m: ParticleMode) => { setMode(m); setHover(null); setPinned(null) }
   const caption = (v: (typeof cells)[number]) => (mode==='daily' ? v.date : mode==='weekly' ? v.from+' – '+v.to : t('through')+' '+v.to) + ' · ' + (v.value === null ? t('noUsage') : exact(v.value)+' Token')
   const reading = hover ?? pinned, shown = reading !== null ? cells[reading] : null
-  const column = Math.floor((reading ?? 0)/7), selected = cursor ?? cells.findIndex(v=>v.date===model?.today)
+  const column = Math.floor((reading ?? 0)/particleDaysPerWeek), selected = cursor ?? cells.findIndex(v=>v.date===model?.today)
   return <div className="dd-usage-activity">
     <div className="dd-usage-row"><div className="dd-usage-title"><h3>{t('tokenActivity')}</h3><Palette color={palette} t={t}/></div>
       <div className="dd-usage-tabs" role="tablist" aria-label={t('tokenActivity')}>{modes.map((m,i)=><button type="button" role="tab" key={m} id={'dd-usage-'+m}
@@ -71,12 +72,12 @@ function ParticleChart({model, t, palette}: { model: UsageModel | null; t: T; pa
         }}>{t(m)}</button>)}</div>
     </div>
     <div id="dd-particle-panel" role="tabpanel" aria-labelledby={'dd-usage-'+mode} className="dd-particle-panel">
-      {shown && <div className="dd-particle-tip" role="tooltip" data-edge={column<8?'left':column>44?'right':'middle'} style={{left:((column+.5)/53*100)+'%'}}>{caption(shown)}</div>}
-      <div className="dd-particles" aria-label={t('particleRange')} role="group" onMouseLeave={()=>setHover(null)}>
+      {shown && <div className="dd-particle-tip" role="tooltip" data-edge={column<8?'left':column>=particleWeeks-8?'right':'middle'} style={{left:((column+.5)/particleWeeks*100)+'%'}}>{caption(shown)}</div>}
+      <div className="dd-particles" style={particleGrid} aria-label={t('particleRange')} role="group" onMouseLeave={()=>setHover(null)}>
         {model ? cells.map((v,i)=><button type="button" className="dd-particle" data-date={v.date} data-index={i} data-level={v.level} data-tokens={v.value??undefined} key={v.date}
           tabIndex={i===selected?0:-1} aria-label={caption(v)} onMouseEnter={()=>setHover(i)} onFocus={()=>{setCursor(i);setHover(i)}} onBlur={()=>setHover(null)}
-          onClick={()=>setPinned(prev=>prev===i?null:i)} onKeyDown={e=>{if(e.key==='Escape'){setPinned(null);setHover(null)}else moveCell(e,i,371,true)}}/>)
-          : Array.from({length:371},(_,i)=><i key={i} className="dd-particle" aria-hidden="true"/>)}
+          onClick={()=>setPinned(prev=>prev===i?null:i)} onKeyDown={e=>{if(e.key==='Escape'){setPinned(null);setHover(null)}else moveCell(e,i,particleCount,true)}}/>)
+          : Array.from({length:particleCount},(_,i)=><i key={i} className="dd-particle" aria-hidden="true"/>)}
       </div>
       <div className="dd-usage-months" aria-hidden="true">{months.map(m=><span key={m.date}>{m.name}</span>)}</div>
     </div>

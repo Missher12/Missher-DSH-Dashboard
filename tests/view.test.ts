@@ -59,6 +59,7 @@ test('usage statistics merge matching project histories, retain known zeroes, an
   const daily=particles(primary,'daily'), weekly=particles(primary,'weekly'), cumulative=particles(primary,'cumulative')
   assert.equal(daily.length,371); assert.equal(new Date(daily[0].date+'T00:00Z').getUTCDay(),0)
   assert.deepEqual(daily.map(c=>c.date),weekly.map(c=>c.date))
+  assert.deepEqual(daily.map(c=>c.date),cumulative.map(c=>c.date))
   assert.equal(daily.find(c=>c.date==='2026-11-09')?.value,0)
   assert.equal(daily.find(c=>c.date==='2026-11-11')?.value,null)
   assert.equal(weekly.find(c=>c.date==='2026-11-11')?.value,35)

@@ -5,6 +5,9 @@ const DAY = 86_400_000
 const dateOf = (day: number) => new Date(day * DAY).toISOString().slice(0, 10)
 const numberOf = (day: string) => Date.parse(day + 'T00:00:00Z') / DAY
 const add = (a: number | null, b: number | null) => b === null ? a : (a ?? 0) + b
+export const particleDaysPerWeek = 7
+export const particleWeeks = 53
+export const particleCount = particleWeeks * particleDaysPerWeek
 export type ParticleMode = 'daily' | 'weekly' | 'cumulative'
 
 export function usageModel(history: UsageHistory[], today: string, project: string, archived: boolean) {
@@ -18,7 +21,7 @@ export function usageModel(history: UsageHistory[], today: string, project: stri
     if (group.humanDays) for (const day of group.humanDays) human.add(day)
     else knownDays = false
   }
-  const end = numberOf(today), start = end - new Date(end * DAY).getUTCDay() - 52 * 7, first = dateOf(start)
+  const end = numberOf(today), start = end - new Date(end * DAY).getUTCDay() - (particleWeeks - 1) * particleDaysPerWeek, first = dateOf(start)
   let total: number | null = null, peak: number | null = null, baseline: number | null = null
   for (const [day, value] of daily) {
     total = add(total, value); peak = Math.max(peak ?? 0, value)
@@ -29,7 +32,7 @@ export function usageModel(history: UsageHistory[], today: string, project: stri
     const day = numberOf(date)
     run = day === prev + 1 ? run + 1 : 1; longest = Math.max(longest, run); prev = day
   }
-  const days = Array.from({length: 53 * 7}, (_, i) => { const date = dateOf(start + i); return { date, value: daily.get(date) ?? null } })
+  const days = Array.from({length: particleCount}, (_, i) => { const date = dateOf(start + i); return { date, value: daily.get(date) ?? null } })
   return { today, hours, days, baseline, total, peak, longestMs, current: knownDays ? (prev === end || prev === end - 1 ? run : 0) : null, longest: knownDays ? longest : null }
 }
 export type UsageModel = ReturnType<typeof usageModel>
@@ -37,8 +40,9 @@ export type UsageModel = ReturnType<typeof usageModel>
 /** A week always occupies the same seven positions. Totals without a provider receipt stay absent. */
 export function particles(model: UsageModel, mode: ParticleMode) {
   let running = model.baseline
-  const weeks = Array.from({length: 53}, (_, i) => {
-    const days = model.days.slice(i * 7, i * 7 + 7), weekly = days.reduce((n, d) => add(n, d.value), null as number | null)
+  const weeks = Array.from({length: particleWeeks}, (_, i) => {
+    const days = model.days.slice(i * particleDaysPerWeek, (i + 1) * particleDaysPerWeek)
+    const weekly = days.reduce((n, d) => add(n, d.value), null as number | null)
     running = add(running, weekly)
     return { days, weekly, cumulative: running }
   })
@@ -47,8 +51,9 @@ export function particles(model: UsageModel, mode: ParticleMode) {
   return weeks.flatMap(({ days, weekly, cumulative }) => days.map(({date, value}, index) => {
     const tokens = mode === 'daily' ? value : mode === 'weekly' ? weekly : cumulative
     const ratio = tokens && max ? tokens / max : 0
-    const height = mode === 'weekly' && ratio ? Math.ceil(7 * Math.log1p(tokens!) / Math.log1p(max)) : Math.ceil(7 * ratio)
-    const level = mode === 'daily' || index >= 7 - height ? Math.ceil(5 * ratio) : 0
-    return { date, value:tokens, level, from:mode === 'daily' ? date : days[0].date, to:mode === 'daily' ? date : days[6].date > model.today ? model.today : days[6].date }
+    const height = Math.ceil(particleDaysPerWeek * (mode === 'weekly' && ratio ? Math.log1p(tokens!) / Math.log1p(max) : ratio))
+    const level = mode === 'daily' || index >= particleDaysPerWeek - height ? Math.ceil(5 * ratio) : 0
+    const weekEnd = days[particleDaysPerWeek - 1].date
+    return { date, value:tokens, level, from:mode === 'daily' ? date : days[0].date, to:mode === 'daily' ? date : weekEnd > model.today ? model.today : weekEnd }
   }))
 }

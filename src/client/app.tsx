@@ -13,7 +13,7 @@ import { superagentPackage, type DashboardLayout, type PluginCard } from '../lay
 
 const rowTitle = (row: DashboardRow) => row.title || row.id
 const completedGoal = (row: DashboardRow) => row.ticket ? row.ticket.stage === 'ended' && ['completed', 'merged'].includes(row.ticket.outcome ?? '') : row.goal?.phase === 'complete'
-const PAGE_SIZE = 10
+const PAGE_SIZE = 5
 // Reopening a panel or a visited range can paint immediately while fresh data is fetched.
 const snapshots = new Map<number, SnapshotData>()
 type AppProps = { t: T; openSession: (id: string) => Promise<void>; openPlugin?: (id: string) => void }
@@ -95,25 +95,24 @@ export function App({ t, openSession, openPlugin }: AppProps) {
   }
   const renderHeader = (projectControl: ReactNode) => (<header className="dd-header">
       <div className="dd-heading">
-        <div className="dd-heading-row">
-          <h1>{t('panel')}</h1>
-          <button type="button" className="dd-button dd-customize-button" aria-haspopup="dialog"
-            disabled={!preference.available && !preference.loadError}
-            onClick={() => preference.available ? setCustomizing(true) : preference.retry()}>
-            {t(!preference.available && preference.loadError ? 'retryLayout' : 'customize')}
-          </button>
-        </div>
+        <h1>{t('panel')}</h1>
         <div className="dd-meta"><span role={notice ? 'alert' : 'status'} className={notice ? 'dd-error' : undefined} title={notice || snapshot?.timeZone}>{notice || latest}</span></div>
       </div>
-      <div className="dd-controls">{projectControl}
+      <div className="dd-controls dd-toolbar" role="group" aria-label={t('panel')}>{projectControl}
         <label className="dd-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />{t('showArchived')}</label>
         <div className="dd-segmented dd-range" role="group" aria-label={t('range')}>
-          {([1, 7, 30] as const).map(value => <button key={value} aria-pressed={days === value} onClick={() => {
+          {([1, 7, 30] as const).map(value => <button key={value} type="button" aria-pressed={days === value} onClick={() => {
             setDays(value)
             setSnapshot(snapshots.get(value) ?? snapshot)
           }}>{t(value === 1 ? 'today' : value === 7 ? 'week' : 'month')}</button>)}
         </div>
-        <button className="dd-button" onClick={refresh} disabled={busy} aria-busy={busy}>{t('refresh')}</button>
+        <button type="button" className="dd-button dd-toolbar-refresh" aria-label={t('refresh')} title={t('refresh')}
+          onClick={refresh} disabled={busy} aria-busy={busy}><svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true"><path d="M12.8 6A5 5 0 1 0 13 9M13 2v4H9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+        <button type="button" className="dd-button dd-customize-button" aria-haspopup="dialog"
+          disabled={!preference.available && !preference.loadError}
+          onClick={() => preference.available ? setCustomizing(true) : preference.retry()}>
+          {t(!preference.available && preference.loadError ? 'retryLayout' : 'customize')}
+        </button>
       </div>
     </header>)
   return <main className="dd-page" aria-busy={!snapshot || !snapshot.dataReady && snapshot.scanning || rangePending}>
@@ -206,23 +205,25 @@ function SessionSection({ snapshot, archived, t, openSession, openPlugin, refres
   const showRecent = layout.sections.includes('recent')
   const promptTokens = data.usage.tokens.uncachedInput + data.usage.tokens.cacheRead + data.usage.tokens.cacheWrite
   return <div className="dd-overview">
-    {renderHeader(<div className="dd-controls">
-          <label className="dd-visually-hidden" htmlFor="dd-project">{title} · {t('project')}</label>
-          <span className="dd-select"><select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}>
-            <option value="">{t('allProjects')}</option>
-            {project && !data.projects.has(project) && <option value={project}>{projectLabel || project}</option>}
-            {[...data.projects].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </select></span>
-        </div>)}
+    {renderHeader(
+      <label className="dd-select">
+        <span className="dd-visually-hidden">{title} · {t('project')}</span>
+        <select id="dd-project" value={project} onChange={event => selectProject(event.target.value)}>
+          <option value="">{t('allProjects')}</option>
+          {project && !data.projects.has(project) && <option value={project}>{projectLabel || project}</option>}
+          {[...data.projects].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+      </label>)}
     {error && <p className="dd-notice dd-error" role="alert">{t('openError')}</p>}
     <section className="dd-stats" aria-label={t('sessionOverview')}>
       <Summary tone="running" label={t('running')} value={snapshot ? <>{data.scoped.filter(r=>r.running).length}<small> / {data.scoped.length}</small></> : '—'} hint={t('liveNow')} onClick={()=>selectStatus('running')} />
       <Summary label={t('completed')} value={<Ratio done={data.complete} total={data.goals.length}/>} hint={t('goalsCount')}><MiniProgress value={data.complete} total={data.goals.length}/></Summary>
       <Summary tone="attention" label={t('needAttention')} value={snapshot ? String(data.scoped.filter(r=>attentionStates.has(r.status)).length) : '—'} hint={t('liveNow')} onClick={()=>selectStatus('attention')} />
-      <Summary label={t('cache')} value={data.usage.reported && promptTokens ? numberFormat(t('numberLocale')).percent(data.usage.tokens.cacheRead/promptTokens) : '—'} hint={t('cacheRatio')} />
+      <Summary label={t('cache')} value={data.usage.reported && promptTokens ? numberFormat(t('numberLocale')).percent(data.usage.tokens.cacheRead/promptTokens) : '—'} hint={t('cacheRatio')}>
+        {data.usage.reported > 0 && promptTokens > 0 && <MiniProgress value={data.usage.tokens.cacheRead} total={promptTokens} />}
+      </Summary>
     </section>
     <div className={showRecent ? 'dd-board' : 'dd-board dd-without-recent'}>
-
       <TokenChart series={data.series} keys={keys} tokens={data.usage.tokens} reported={data.usage.reported} t={t} />
       {showRecent && <RecentSessions rows={data.scoped} ready={!!snapshot} onSelect={selectSession} t={t} />}
       {layout.sections.includes('usage') && <UsageStatistics history={snapshot?.usageHistory} today={snapshot?.today} zone={snapshot?.timeZone} project={project} archived={archived} t={t} refresh={refresh} busy={busy} />}
