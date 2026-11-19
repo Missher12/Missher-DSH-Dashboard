@@ -2,9 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { addUsage, calendar, tokenKeys, tokenTotal, zeroTokens, zeroUsage } from '../fold.ts'
 import type { ReactNode } from 'react'
 import type { Snapshot, Tokens, DashboardRow } from '../types.ts'
-import { ProgressChart, RankingChart, StateChart, TokenChart, TokenMixChart, DistributionChart, Sparkline, MiniProgress } from './charts.tsx'
-import { acceptSnapshot, activityCounts, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
-import { ActivityTrend, RecentSessions } from './board.tsx'
+import { TokenChart, Sparkline, MiniProgress } from './charts.tsx'
+import { acceptSnapshot, attentionStates, retainRowOrder, type SnapshotData } from './data.ts'
+import { RecentSessions } from './board.tsx'
 import type { T } from './locales.ts'
 import { numberFormat } from './numbers.ts'
 import { UsageStatistics } from './usage-stats.tsx'
@@ -121,7 +121,7 @@ function SessionSection({ snapshot, archived, t, openSession, openPlugin, refres
   snapshot: Snapshot | null; archived: boolean; refresh: () => void; busy: boolean; renderHeader: (project: ReactNode) => ReactNode
   layout: DashboardLayout; cards: PluginCard[]
 }) {
-  const [project, setProject] = useState(''), [rank, setRank] = useState<'session' | 'project'>('session')
+  const [project, setProject] = useState('')
   const [projectLabel, setProjectLabel] = useState('')
   const [error, setError] = useState(false)
   const rowOrder = useRef<string[]>([])
@@ -137,12 +137,11 @@ function SessionSection({ snapshot, archived, t, openSession, openPlugin, refres
     const regular = retainRowOrder(rows.filter(row => row.kind !== 'superagent'), rowOrder.current)
     const scoped = regular.filter(row => !project || row.projectId === project)
     const projects = new Map(regular.map(row => [row.projectId, row.project || t('noProject')]))
-    const usage = zeroUsage(), series: Record<string, Tokens> = {}, toolsSeries: Record<string, number> = {}
+    const usage = zeroUsage(), series: Record<string, Tokens> = {}
     for (const row of scoped) {
       if (row.unavailable) continue
       addUsage(usage, row.usage)
       for (const [key, tokens] of Object.entries(row.series)) { const bucket = series[key] ??= zeroTokens(); for (const k of tokenKeys) bucket[k] += tokens[k] }
-      for (const [key, count] of Object.entries(row.toolsSeries)) toolsSeries[key] = (toolsSeries[key] ?? 0) + count
     }
     const goals = scoped.filter(r => r.goal || r.ticket)
     const complete = goals.filter(completedGoal).length
@@ -154,7 +153,7 @@ function SessionSection({ snapshot, archived, t, openSession, openPlugin, refres
     }
     const superagentGoals = superagentRows.filter(row => row.goal || row.ticket)
     const superagent = { rows: superagentRows, usage: superagentUsage, series: superagentSeries, goals: superagentGoals, complete: superagentGoals.filter(completedGoal).length }
-    return { regular, scoped, projects, usage, series, toolsSeries, activity: activityCounts(scoped), activeSessions: scoped.filter(r => !r.unavailable && r.activeHours?.length).length, goals, complete, superagent }
+    return { regular, scoped, projects, usage, series, goals, complete, superagent }
   }, [snapshot, project, archived, t])
   useLayoutEffect(() => { rowOrder.current = data.regular.map(row => row.id) }, [data.regular])
   const keys = useMemo(() => {
@@ -206,15 +205,5 @@ function SessionSection({ snapshot, archived, t, openSession, openPlugin, refres
       <p className="dd-source-notice" role="status">{snapshot?.superagent === 'partial' ? t('sourcePartial') : '\u00a0'}</p>
     </section>}
     <PluginCards cards={cards} openPlugin={openPlugin} t={t} />
-    {layout.sections.includes('more') && <details className="dd-more"><summary>{t('moreStats')}</summary>
-    <div className="dd-chart-grid">
-      <ActivityTrend keys={keys} tools={data.toolsSeries} active={data.activity} toolsTotal={data.usage.toolCalls} activeTotal={data.activeSessions} t={t} />
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartStatusHint')}>{t('chartStatus')}</h3></div><div className="dd-chart-body"><StateChart rows={data.scoped} t={t} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartTokenMix')}</h3></div><div className="dd-chart-body"><TokenMixChart tokens={data.usage.tokens} reported={data.usage.reported} t={t} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartDistributionHint')}>{t('chartDistribution')}</h3></div><div className="dd-chart-body"><DistributionChart rows={data.scoped} t={t} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3 title={t('chartProgressHint')}>{t('chartProgress')}</h3></div><div className="dd-chart-body"><ProgressChart rows={data.scoped} t={t} onSelect={selectSession} /></div></section>
-      <section className="dd-chart"><div className="dd-section-head"><h3>{t('chartRanking')}</h3><div className="dd-segmented"><button aria-pressed={rank === 'session'} onClick={() => setRank('session')}>{t('bySession')}</button><button aria-pressed={rank === 'project'} onClick={() => setRank('project')}>{t('byProject')}</button></div></div><div className="dd-chart-body"><RankingChart rows={data.scoped} t={t} mode={rank} onSelect={id => rank === 'session' ? selectSession(id) : selectProject(id)} /></div></section>
-    </div>
-    </details>}
   </div>
 }

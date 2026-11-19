@@ -43,14 +43,32 @@
 .dd-toolbar .dd-range button[aria-pressed=true] { background:var(--dd-surface); box-shadow:inset 0 0 0 1px var(--dd-rule),0 1px 3px var(--dd-glass-shadow); font-weight:600; }
 .dd-toolbar :is(select,.dd-button) { border-color:transparent; border-radius:18px; background:transparent; }
 .dd-toolbar :is(select,.dd-button):not(:disabled):hover { border-color:transparent; background:var(--dd-glass-hover); }
-.dd-toolbar label.dd-select { min-width:min(118px,100%); }
-.dd-toolbar .dd-select select { width:100%; }
+.dd-toolbar label.dd-select { width:clamp(118px,16cqi,168px); }
+.dd-toolbar .dd-select select { width:100%; min-width:0; text-overflow:ellipsis; }
 .dd-toolbar .dd-toolbar-refresh { display:grid; place-items:center; width:32px; flex:none; padding:0; }
 .dd-controls { gap:8px; justify-content:flex-end; flex-wrap:wrap; }
-.dd-controls select,.dd-button { border:1px solid var(--dd-line); border-radius:7px; background:var(--dd-base); min-height:32px; padding:5px 12px; line-height:20px; text-align:center; }
+.dd-select select,.dd-button { border:1px solid var(--dd-line); border-radius:7px; background:var(--dd-base); min-height:32px; padding:5px 12px; line-height:20px; text-align:center; }
 .dd-select { position:relative; display:inline-flex; min-width:0; max-width:100%; }
 .dd-select::after { content:""; pointer-events:none; position:absolute; right:10px; top:calc(50% - 4px); width:6px; height:6px; border:solid var(--dd-muted); border-width:0 1.25px 1.25px 0; transform:rotate(45deg); }
-.dd-controls select { appearance:none; max-width:230px; text-align-last:center; padding-inline:26px; }
+.dd-select select { appearance:none; max-width:min(230px,100%); text-align-last:center; padding-inline:26px; cursor:pointer; }
+@supports (appearance:base-select) and selector(select::picker(select)) {
+  .dd-select select,.dd-select select::picker(select) { appearance:base-select; }
+  .dd-select select { justify-content:center; }
+  .dd-select select::picker-icon { display:none; }
+  .dd-select select:open,.dd-toolbar .dd-select select:open:hover {
+    border-color:var(--dd-line); border-radius:7px 7px 0 0; background:var(--dd-base);
+  }
+  .dd-select:has(select:open)::after { transform:translateY(3px) rotate(225deg); }
+  .dd-select select::picker(select) {
+    position:fixed; position-area:block-end span-inline-end; position-try-fallbacks:none; justify-self:start; align-self:start;
+    inline-size:anchor-size(width); min-inline-size:anchor-size(width); max-block-size:min(260px,100%);
+    margin:0; padding:2px 0; border:1px solid var(--dd-line); border-top:0; border-radius:0 0 7px 7px;
+    color:var(--dd-text); background:var(--dd-base); overflow:auto;
+  }
+  .dd-select option { min-height:28px; padding:4px 8px; text-align:start; white-space:normal; overflow-wrap:anywhere; }
+  .dd-select option::checkmark { order:1; margin-inline-start:auto; }
+  .dd-select option:is(:hover,:focus-visible,:checked) { background:var(--dd-glass-hover); }
+}
 .dd-button:not(:disabled):hover { border-color:var(--dd-blue); }
 .dd-meta { display:block; color:var(--dd-muted); font-size:11px; line-height:18px; }
 .dd-meta>[role] { display:block; height:18px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
@@ -243,17 +261,13 @@
 .dd-usage-metrics dt,.dd-usage-metrics dd { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dd-usage-metrics dt { font-size:10px; line-height:15px; }
 .dd-usage-metrics dd { font-size:17px; line-height:21px; font-weight:600; font-variant-numeric:tabular-nums; }
-.dd-usage-row,.dd-usage-title,.dd-hour-meta,.dd-usage-palette,.dd-usage-swatches,.dd-usage-tabs { display:flex; align-items:center; gap:6px; }
+.dd-usage-row,.dd-usage-title,.dd-hour-meta,.dd-usage-palette,.dd-usage-tabs { display:flex; align-items:center; gap:6px; }
 .dd-usage-row { justify-content:space-between; }
 .dd-usage-title { min-width:0; }
 .dd-usage-title h3 { font-size:13px; line-height:20px; font-weight:550; white-space:nowrap; }
-.dd-usage-palette { position:relative; padding:3px 4px; border-radius:5px; font-size:10px; color:var(--dd-muted); }
-.dd-usage-palette:focus-within { outline:2px solid var(--du-accent); }
-.dd-usage-swatches { gap:2px; }
-.dd-usage-swatches i { width:3px; height:10px; background:var(--du-accent); border-radius:2px; }
-.dd-usage-swatches i:first-child { opacity:.35; }
-.dd-usage-swatches i:nth-child(2) { opacity:.65; }
-.dd-usage-palette select { position:absolute; inset:0; width:100%; height:100%; min-height:0; opacity:0; cursor:pointer; }
+.dd-usage-palette { position:relative; min-width:0; font-size:11px; }
+.dd-usage-palette .dd-select { width:118px; }
+.dd-usage-palette select { width:100%; min-height:26px; padding:2px 22px; line-height:20px; text-overflow:ellipsis; }
 .dd-usage-palette input { position:absolute; bottom:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; }
 .dd-usage-tabs { gap:2px; border-radius:10px; padding:2px; background:var(--dd-track); }
 .dd-usage-tabs button { min-height:24px; border:0; padding:2px 8px; background:transparent; border-radius:999px; color:var(--dd-muted); font-size:11px; line-height:18px; }
@@ -319,11 +333,6 @@
 .dd-usage-panels { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(0,1fr); gap:18px; min-width:0; }
 .dd-usage-activity { min-width:0; }
 .dd-usage-metrics div { border:0; }
-.dd-more { margin-top:27px; }
-.dd-more>summary { width:fit-content; cursor:pointer; font-size:13px; font-weight:550; color:var(--dd-muted); }
-.dd-more[open]>summary { margin-bottom:15px; }
-.dd-more .dd-feature { grid-column:auto; }
-.dd-more .dd-volume { grid-column:1/-1; }
 .dd-superagent-cards .dd-stat:has(.dd-sparkline) { padding-right:92px; }
 .dd-superagent-cards .dd-sparkline { position:absolute; width:70px; height:31px; right:16px; top:calc(50% - 15px); color:var(--dd-accent); }
 .dd-mini-ring { display:grid; place-items:center; position:absolute; right:18px; top:calc(50% - 22px); width:44px; height:44px; border-radius:50%; background:conic-gradient(var(--dd-accent) var(--dd-progress),var(--dd-track) 0); }
@@ -364,7 +373,7 @@
 }
 @container (max-width:565px) {
   .dd-header>.dd-toolbar { display:grid; width:100%; grid-template-columns:minmax(0,1fr) auto; border-radius:17px; }
-  .dd-toolbar .dd-select { grid-column:1; }
+  .dd-toolbar label.dd-select { grid-column:1; width:100%; }
   .dd-toolbar .dd-select select { max-width:100%; }
   .dd-toolbar .dd-check { grid-column:2; justify-self:end; }
   .dd-toolbar .dd-range { grid-column:1; grid-row:2; }

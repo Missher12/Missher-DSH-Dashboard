@@ -19,14 +19,15 @@ const chooseColor = (value: string) => {
 function Palette({ color, t }: { color: string; t: T }) {
   const input = useRef<HTMLInputElement>(null), isPreset = presets.some(([hex]) => hex === color)
   return <span className="dd-usage-palette">
-    <span aria-hidden="true" className="dd-usage-swatches"><i/><i/><i/></span><span aria-hidden="true">{t('colorMenu')}</span>
-    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-    <select aria-label={t('particleColor')} value={isPreset ? color : 'current'} onChange={e => {
-      if (e.target.value === 'custom') input.current?.click(); else chooseColor(e.target.value)
-    }}>
-      {presets.map(([hex,key])=><option key={key} value={hex}>{t(key)}</option>)}
-      {!isPreset && <option value="current">{color}</option>}<option value="custom">{t('customColor')}</option>
-    </select>
+    <label className="dd-select">
+      <span className="dd-visually-hidden">{t('particleColor')}</span>
+      <select value={isPreset ? color : 'current'} onChange={e => {
+        if (e.target.value === 'custom') input.current?.click(); else chooseColor(e.target.value)
+      }}>
+        {presets.map(([hex,key])=><option key={key} value={hex}>{t(key)}</option>)}
+        {!isPreset && <option value="current">{color}</option>}<option value="custom">{t('customColor')}</option>
+      </select>
+    </label>
     <input ref={input} type="color" tabIndex={-1} aria-label={t('customColor')} value={color || '#4d6bfe'} onChange={e=>chooseColor(e.target.value)}/>
   </span>
 }
