@@ -89,21 +89,25 @@ function Hourly({model,t,refresh,busy,zone}: {model: UsageModel | null; t:T; ref
   const {compact,exact}=numberFormat(t('numberLocale')), values=model?.hours ?? Array<number|null>(24).fill(null)
   const max=Math.max(0,...values.map(v=>v??0)), total=values.reduce<number|null>((n,v)=>v===null?n:(n??0)+v,null)
   const hourLabel=(h:number)=>clock(h)+'–'+clock(h+1)+' · '+(values[h]===null?t('noUsage'):exact(values[h]!)+' Token')
-  const reading=hover??pinned, readout=reading!==null?hourLabel(reading):max ? t('peak')+' '+hourLabel(values.indexOf(max)) : total===null?t('noUsage'):'0 Token'
+  const reading=hover??pinned
+  const peak=max ? t('peak')+' '+hourLabel(values.indexOf(max)) : total===null?t('noUsage'):'0 Token'
+  const overview=zone ? peak+' · '+zone : peak
   return <section className="dd-usage-hourly" aria-label={t('hourActivity')}>
     <div className="dd-usage-row"><div className="dd-usage-title"><h3>{t('hourActivity')}</h3><small>{t('today')} · {model?.today.slice(5).replace('-','/') ?? '—'}</small></div>
-      <div className="dd-hour-meta"><small>{t('dayTotal')}</small> <strong title={total!==null?exact(total)+' Token':undefined}>{total===null?'—':compact(total)}</strong> {total!==null && <small>Token</small>}
+      <div className="dd-hour-meta" title={overview}><small>{t('dayTotal')}</small> <strong title={total!==null?exact(total)+' Token':undefined}>{total===null?'—':compact(total)}</strong> {total!==null && <small>Token</small>}
         <button type="button" aria-label={t('refresh')} title={t('refresh')} disabled={busy} onClick={refresh}><svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true"><path d="M12.8 6A5 5 0 1 0 13 9M13 2v4H9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
       </div></div>
     <div className="dd-hour-plot"><div className="dd-hour-guide" aria-hidden="true"><span>{max?compact(max):''}</span><span>0</span></div>
-      <div className="dd-hour-bars" role="group" aria-label={t('hourActivity')} onMouseLeave={()=>setHover(null)}>
+      <div className="dd-hour-bars" role="group" aria-label={t('hourActivity')} aria-description={overview} onMouseLeave={()=>setHover(null)}>
+        {reading!==null && <div className="dd-hour-tip" role="tooltip">{max > 0 && values[reading]===max ? t('peak')+' ' : ''}{hourLabel(reading)}
+          {zone && <small>{zone}</small>}
+        </div>}
         {values.map((v,h)=><button type="button" key={h} data-index={h} data-tokens={v??undefined} data-peak={!!max&&v===max||undefined} tabIndex={focus===h?0:-1}
-          aria-label={hourLabel(h)} title={hourLabel(h)} onMouseEnter={()=>setHover(h)} onFocus={()=>{setFocus(h);setHover(h)}} onBlur={()=>setHover(null)}
+          aria-label={hourLabel(h)} onMouseEnter={()=>setHover(h)} onFocus={()=>{setFocus(h);setHover(h)}} onBlur={()=>setHover(null)}
           onClick={()=>setPinned(prev=>prev===h?null:h)} onKeyDown={e=>{if(e.key==='Escape'){setHover(null);setPinned(null)}else moveCell(e,h,24,false)}}>
           {v!==null && <i data-zero={v===0||undefined} style={{height:max?v/max*100+'%':'0%'}}/>}</button>)}
       </div><div className="dd-hour-axis" aria-hidden="true">{values.map((_,i)=><span key={i}>{i%3===0||i===23?clock(i).slice(0,2):''}</span>)}</div>
     </div>
-    <div className="dd-hour-foot"><span>{readout}</span><span>{zone}</span></div>
   </section>
 }
 export const UsageStatistics = memo(function UsageStatistics({history,today,project,archived,zone,t,refresh,busy}: {

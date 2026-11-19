@@ -255,12 +255,12 @@
 .dd-data table { margin:0; white-space:nowrap; }
 .dd-feature.dd-usage-card { display:grid; grid-column:1/-1; grid-template-columns:subgrid; height:auto; row-gap:10px; column-gap:normal; }
 .dd-usage-card>* { grid-column:1/-1; }
-.dd-usage-panels { display:grid; grid-template-columns:subgrid; grid-template-rows:repeat(4,auto); row-gap:6px; min-width:0; }
+.dd-usage-panels { display:grid; grid-template-columns:subgrid; grid-template-rows:repeat(3,auto); row-gap:6px; min-width:0; }
 .dd-usage-activity,.dd-usage-hourly { display:grid; grid-row:1/-1; grid-template:subgrid/minmax(0,1fr); min-width:0; }
 .dd-usage-activity { padding-inline-end:calc(var(--dd-card-inline) + 1px); }
 .dd-usage-hourly { position:relative; padding-inline-start:calc(var(--dd-card-inline) + 1px); }
 .dd-usage-hourly::before { content:""; position:absolute; inset-block:0; inset-inline-start:calc(var(--dd-board-gap) / -2); width:1px; background:var(--dd-rule); }
-.dd-usage-card .dd-card-head small,.dd-usage-title small,.dd-hour-meta small,.dd-hour-foot,.dd-hour-guide,.dd-hour-axis,.dd-usage-months { color:var(--dd-muted); font-size:10px; }
+.dd-usage-card .dd-card-head small,.dd-usage-title small,.dd-hour-meta small,.dd-hour-guide,.dd-hour-axis,.dd-usage-months { color:var(--dd-muted); font-size:10px; }
 .dd-usage-card .dd-card-head { align-items:center; }
 .dd-usage-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); margin:0; padding:0 0 10px; border-bottom:1px solid var(--dd-rule); }
 .dd-usage-metrics>div { display:flex; flex-direction:column-reverse; align-items:flex-start; justify-content:center; gap:3px; min-width:0; padding:0 8px 0 0; }
@@ -292,7 +292,10 @@
 .dd-particles button:hover,.dd-particles button:focus-visible { outline:1.5px solid var(--dd-text); outline-offset:1px; z-index:1; }
 .dd-usage-months { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); min-height:14px; line-height:14px; font-size:9px; }
 .dd-usage-months span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.dd-particle-tip { position:absolute; z-index:2; inset-block-end:calc(100% + 4px); transform:translateX(-50%); max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; padding:4px 8px; font-size:11px; border:1px solid var(--dd-rule); border-radius:6px; color:var(--dd-text); background:var(--dd-base); pointer-events:none; }
+.dd-particle-tip,.dd-hour-tip { position:absolute; z-index:2; inset-block-end:calc(100% + 4px); max-width:100%; padding:4px 8px; font-size:11px; border:1px solid var(--dd-rule); border-radius:6px; color:var(--dd-text); background:var(--dd-base); pointer-events:none; }
+.dd-particle-tip { transform:translateX(-50%); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.dd-hour-tip { inset-inline-end:0; width:max-content; overflow-wrap:anywhere; line-height:1.5; }
+.dd-hour-tip small { display:block; color:var(--dd-muted); font-size:10px; }
 .dd-particle-tip[data-edge=left] { left:0!important; transform:none; }
 .dd-particle-tip[data-edge=right] { left:auto!important; right:0; transform:none; }
 .dd-hour-meta { gap:3px; min-height:28px; white-space:nowrap; }
@@ -301,7 +304,7 @@
 .dd-hour-plot { grid-template-columns:max-content minmax(0,1fr); column-gap:7px; }
 .dd-hour-guide { display:flex; flex-direction:column; justify-content:space-between; text-align:end; line-height:10px; font-variant-numeric:tabular-nums; }
 .dd-hour-bars,.dd-hour-axis { display:grid; grid-template-columns:repeat(24,minmax(0,1fr)); gap:3px; }
-.dd-hour-bars { background:linear-gradient(var(--dd-rule),var(--dd-rule)) left bottom / 100% 1px no-repeat; }
+.dd-hour-bars { position:relative; background:linear-gradient(var(--dd-rule),var(--dd-rule)) left bottom / 100% 1px no-repeat; }
 .dd-hour-bars button { display:flex; align-items:flex-end; justify-content:center; min-width:0; min-height:0; padding:0; border:0; background:transparent; }
 .dd-hour-bars i { display:block; width:100%; max-width:24px; min-height:2px; border-radius:3px 3px 0 0; background:color-mix(in oklab,var(--du-accent) 68%,var(--dd-base)); }
 .dd-hour-bars [data-peak] i,.dd-hour-bars button:hover i,.dd-hour-bars button:focus-visible i { background:var(--du-accent); }
@@ -309,8 +312,6 @@
 .dd-hour-axis { grid-column:2; font-size:9px; text-align:center; line-height:14px; }
 .dd-hour-axis span:first-child { justify-self:start; }
 .dd-hour-axis span:last-child { justify-self:end; }
-.dd-hour-foot { display:flex; grid-row:4; justify-content:space-between; gap:5px; height:16px; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.dd-hour-foot span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 @container dd-dashboard (max-width:454px) {
   .dd-particles { gap:1px; }
   .dd-usage-tabs button { padding-inline:5px; }
@@ -376,7 +377,6 @@
   .dd-usage-hourly::before { display:none; }
   .dd-particle-panel,.dd-hour-plot { grid-row:auto; grid-template-rows:none; row-gap:4px; }
   .dd-hour-bars { height:80px; }
-  .dd-hour-foot { grid-row:auto; }
   .dd-usage-metrics dd { font-size:14px; }
   .dd-chart-grid { grid-template-columns:minmax(0,1fr); }
   .dd-superagent-cards .dd-stat:has(.dd-sparkline) { padding-right:65px; }
