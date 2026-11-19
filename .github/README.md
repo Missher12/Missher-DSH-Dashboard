@@ -2,7 +2,7 @@
 
 ![Dashboard · 工作仪表盘（品牌插画）](../docs/images/cover-v2.png)
 
-当前版本 **0.4.3** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.3)
+当前版本 **0.4.4** · [下载 Release 安装包](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.4)
 
 「云白」样式使用 DSH 原生底色，顶部工具栏有透明玻璃和边缘折光，包含蓝色用量曲线、最近会话和横向使用统计。仪表盘可单独使用，启用 SuperAgent 后可显示任务摘要。内容与原生插件页对齐，采用最大 960px 居中列、原生页面留白与标题尺寸。
 
@@ -18,7 +18,7 @@
 
 ## 快速开始
 
-1. 从 [v0.4.3 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.3) 下载 `.tgz` 安装包。
+1. 从 [v0.4.4 Release](https://github.com/Missher12/Missher-DSH-Dashboard/releases/tag/v0.4.4) 下载 `.tgz` 安装包。
 2. 在 DSH 插件管理页更新或安装 `@missher/dsh-dashboard` 并启用，按宿主提示重新加载。
 3. 从侧栏打开“工作仪表盘”，选择时间范围和项目。源码构建方法见[项目说明](../README.md)。
 

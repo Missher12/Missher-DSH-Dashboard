@@ -114,7 +114,6 @@ export function App({ t, openSession, openPlugin }: AppProps) {
   return <main className="dd-page" aria-busy={!snapshot || !snapshot.dataReady && snapshot.scanning || rangePending}>
     <SessionSection renderHeader={renderHeader} refresh={refresh} busy={busy} snapshot={snapshot} archived={archived} t={t}
       openSession={openSession} openPlugin={openPlugin} layout={layout} cards={cards} />
-    <footer className="dd-footer"><details><summary>{t('statisticsNote')}</summary><p>{t('note')}</p></details></footer>
   </main>
 }
 function SessionSection({ snapshot, archived, t, openSession, openPlugin, refresh, busy, renderHeader, layout, cards }: AppProps & {
